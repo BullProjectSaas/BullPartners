@@ -55,11 +55,11 @@ const CLIENT_NAV = [['', '🏠', 'Inicio'], ['approvals', '✅', 'Aprobar'], ['r
 const MODAL_BG = { task: 'tasks', deliverable: 'approvals', report: 'reports' }
 
 export default function App() {
-  const { user, view, logout, loading, noProfile } = useStore()
+  const { user, view, logout, loading, noProfile, authUser, profileError } = useStore()
   const { parts } = useRoute()
   const [menu, setMenu] = useState(false)
   if (loading) return <div className="login"><p className="muted">Cargando…</p></div>
-  if (noProfile) return <div className="login"><div className="login-card"><h2>Tu cuenta no tiene acceso</h2><p className="muted">Pedile a Bull Partners que te habilite.</p><button className="btn mt" onClick={logout}>Salir</button></div></div>
+  if (noProfile) return <div className="login"><div className="login-card"><h2>Tu cuenta no tiene acceso</h2><p className="muted">Pedile a Bull Partners que te habilite.</p><p className="muted sm mt-s">Cuenta: {authUser?.email}<br />ID: {authUser?.uid}{profileError && <><br />Error: {profileError}</>}</p><button className="btn mt" onClick={logout}>Salir</button></div></div>
   if (!user) return <Login />
 
   const staff = user.role !== 'client'

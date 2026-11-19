@@ -116,6 +116,7 @@ export function StoreProvider({ children }) {
   const dbRef = useRef(db)
   const [authUser, setAuthUser] = useState(undefined) // undefined = cargando
   const [profile, setProfile] = useState(undefined)
+  const [profileError, setProfileError] = useState('')
   dbRef.current = db
 
   useEffect(() => onAuthStateChanged(auth, (u) => { setAuthUser(u); if (!u) { setProfile(null); setDb(empty()) } }), [])
@@ -124,7 +125,7 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!authUser) return
     setProfile(undefined)
-    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => setProfile(s.exists() ? { ...s.data(), id: s.id } : null), () => setProfile(null))
+    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => { setProfileError(''); setProfile(s.exists() ? { ...s.data(), id: s.id } : null) }, (e) => { setProfileError(e.code || e.message); setProfile(null) })
   }, [authUser])
 
   // Suscripciones en tiempo real según el rol
@@ -211,7 +212,7 @@ export function StoreProvider({ children }) {
   const loading = authUser === undefined || (authUser && profile === undefined)
   const noProfile = authUser && profile === null
 
-  return <Ctx.Provider value={{ db, view, user, actions, login, logout, bootstrap, loading, noProfile }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ db, view, user, actions, login, logout, bootstrap, loading, noProfile, authUser, profileError }}>{children}</Ctx.Provider>
 }
 export const useStore = () => useContext(Ctx)
 
