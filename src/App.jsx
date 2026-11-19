@@ -40,8 +40,7 @@ function Login() {
         {err && <p className="err">{err}</p>}
         <button className="btn primary big" disabled={busy}>{busy ? 'Un momento…' : mode === 'login' ? 'Ingresar' : 'Crear administrador'}</button>
         <div className="demo row between">
-          {mode === 'login' ? <button type="button" className="link sm" onClick={reset}>Olvidé mi contraseña</button> : <span />}
-          <button type="button" className="link sm muted" onClick={() => { setMode(mode === 'login' ? 'setup' : 'login'); setErr('') }}>{mode === 'login' ? 'Primera vez (configuración)' : '‹ Volver al ingreso'}</button>
+          <button type="button" className="link sm" onClick={reset}>Olvidé mi contraseña</button>
         </div>
       </form>
     </div>
