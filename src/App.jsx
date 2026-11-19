@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, sendReset } from './store.jsx'
-import { useRoute, go, Avatar } from './ui.jsx'
+import { useRoute, go, Avatar, ThemeToggle } from './ui.jsx'
 import { AdminHome, ClientHome, NotificationsPage } from './pages/Home.jsx'
 import ClientsPage, { ClientDetail } from './pages/Clients.jsx'
 import TasksPage, { TaskModal } from './pages/Tasks.jsx'
@@ -111,6 +111,9 @@ export default function App() {
           <div className="row gap-s"><Avatar user={user} size={30} /><div className="grow"><b className="sm">{user.name}</b><small className="muted">{user.role === 'admin' ? 'Administrador' : user.role === 'team' ? 'Equipo' : 'Cliente'}</small></div></div>
           <div className="row gap-s mt-s">
             <button className="btn ghost sm" onClick={logout}>Salir</button>
+          </div>
+          <div>
+            <ThemeToggle />
           </div>
         </div>
       </aside>

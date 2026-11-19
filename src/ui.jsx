@@ -216,3 +216,21 @@ export function Comments({ targetType, targetId, clientId }) {
     </div>
   )
 }
+
+/* -------- Modo oscuro (se guarda en este dispositivo) -------- */
+const THEME_KEY = 'mf:theme'
+export function applyStoredTheme() {
+  let t = 'light'
+  try { t = localStorage.getItem(THEME_KEY) || 'light' } catch { /* noop */ }
+  document.documentElement.dataset.theme = t
+}
+export function ThemeToggle() {
+  const [t, setT] = useState(() => document.documentElement.dataset.theme || 'light')
+  const toggle = () => {
+    const n = t === 'dark' ? 'light' : 'dark'
+    document.documentElement.dataset.theme = n
+    try { localStorage.setItem(THEME_KEY, n) } catch { /* noop */ }
+    setT(n)
+  }
+  return <button className="btn ghost sm theme-btn" onClick={(e) => { e.stopPropagation(); toggle() }}>{t === 'dark' ? '☀️ Modo claro' : '🌙 Modo oscuro'}</button>
+}
