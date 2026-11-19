@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function path(c, id) { return /databases/$(database)/documents/$(c)/$(id); }
+    function hasProfile() { return signed() && exists(path('users', request.auth.uid)); }
+    function me() { return get(path('users', request.auth.uid)).data; }
+    function staff() { return hasProfile() && me().role in ['admin', 'team']; }
+    function admin() { return hasProfile() && me().role == 'admin'; }
+    function clientOf(cid) { return hasProfile() && me().role == 'client' && me().clientId == cid; }
+    function mine() { return clientOf(resource.data.clientId); }
+    function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    // Configuración inicial: se puede crear UNA sola vez, junto con el primer admin.
+    match /meta/setup {
+      allow read: if signed();
+      allow create: if signed() && getAfter(path('users', request.auth.uid)).data.role == 'admin';
+    }
+    match /users/{uid} {
+      allow read: if staff() || (signed() && request.auth.uid == uid) || (hasProfile() && resource.data.role in ['admin', 'team']);
+      allow create: if admin() || (signed() && request.auth.uid == uid && request.resource.data.role == 'admin'
+                      && !exists(path('meta', 'setup')) && existsAfter(path('meta', 'setup')));
+      allow update, delete: if admin();
+    }
+    match /clients/{cid} {
+      allow read: if staff() || clientOf(cid);
+      allow write: if admin();
+    }
+    match /projects/{id} {
+      allow read: if staff() || mine();
+      allow write: if staff();
+    }
+    match /news/{id} {
+      allow read: if staff() || mine();
+      allow write: if staff();
+    }
+    match /tasks/{id} {
+      allow read: if staff() || (mine() && resource.data.visibleToClient == true);
+      allow create, delete: if staff();
+      allow update: if staff() || (mine() && resource.data.visibleToClient == true && onlyChanges(['status']));
+    }
+    match /deliverables/{id} {
+      allow read: if staff() || (mine() && resource.data.status in ['aprobacion', 'cambios', 'aprobado']);
+      allow create, delete: if staff();
+      allow update: if staff() || (mine() && resource.data.status == 'aprobacion' && onlyChanges(['status', 'history']));
+    }
+    match /reports/{id} {
+      allow read: if staff() || (mine() && resource.data.published == true);
+      allow create, delete: if staff();
+      allow update: if staff() || (mine() && resource.data.published == true && onlyChanges(['readAt']));
+    }
+    match /files/{id} {
+      allow read: if staff() || (mine() && resource.data.shared == true);
+      allow create: if staff() || (clientOf(request.resource.data.clientId) && request.resource.data.shared == true);
+      allow update, delete: if staff();
+    }
+    match /comments/{id} {
+      allow read: if staff() || (mine() && resource.data.internal == false);
+      allow create: if staff() || (clientOf(request.resource.data.clientId) && request.resource.data.internal == false && request.resource.data.by == request.auth.uid);
+      allow update, delete: if staff();
+    }
+    match /notifications/{id} {
+      allow read: if signed() && resource.data.userId == request.auth.uid;
+      allow create: if hasProfile();
+      allow update: if signed() && resource.data.userId == request.auth.uid && onlyChanges(['read']);
+      allow delete: if admin();
+    }
+  }
+}

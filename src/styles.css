@@ -285,3 +285,6 @@ form + .news { border-top: 1px solid #F1F2F4; margin-top: 10px; }
   .bottom-nav a.on { color: var(--accent); font-weight: 600; }
   .bottom-nav .count { position: absolute; top: -2px; right: calc(50% - 22px); }
 }
+
+.linkbox { display: flex; flex-direction: column; gap: 4px; padding: 28px; border: 1px dashed #CBD5E1; border-radius: 10px; text-align: center; font-weight: 600; font-size: 16px; color: var(--accent); }
+.linkbox small { color: var(--muted); font-weight: 400; font-size: 12px; word-break: break-all; }

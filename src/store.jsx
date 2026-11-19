@@ -1,4 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
+import { collection, doc, onSnapshot, query, where, writeBatch, setDoc } from 'firebase/firestore'
+import { auth, auth2, fs } from './firebase.js'
 
 /* ============================================================
    Capa de datos de MetaFlash.
@@ -7,8 +10,6 @@ import { createContext, useContext, useEffect, useMemo, useState, useCallback } 
    Firebase/Firestore es reemplazar load/save sin tocar la UI.
    ============================================================ */
 
-const KEY = 'metaflash:v1'
-const SESSION = 'metaflash:session'
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 export const now = () => new Date().toISOString()
@@ -53,80 +54,6 @@ export const PROJECT_STATUS = {
   activo: { label: 'Activo', color: '#16A34A' },
   pausado: { label: 'Pausado', color: '#D97706' },
   finalizado: { label: 'Finalizado', color: '#8A94A6' },
-}
-
-/* ---------------- Datos de ejemplo ---------------- */
-function seed() {
-  const mk = monthKey()
-  const prev = addMonths(mk, -1)
-  const d = (offset) => {
-    const x = new Date()
-    x.setDate(x.getDate() + offset)
-    return x.toISOString().slice(0, 10)
-  }
-  const users = [
-    { id: 'u_admin', name: 'Admin Bull', email: 'admin@bull.com', password: 'admin123', role: 'admin' },
-    { id: 'u_sofi', name: 'Sofía Ruiz', email: 'sofia@bull.com', password: 'equipo123', role: 'team' },
-    { id: 'u_tomi', name: 'Tomás Díaz', email: 'tomas@bull.com', password: 'equipo123', role: 'team' },
-    { id: 'u_abc', name: 'Laura (Empresa ABC)', email: 'cliente@abc.com', password: 'cliente123', role: 'client', clientId: 'c_abc' },
-    { id: 'u_nova', name: 'Martín (Nova Fit)', email: 'cliente@novafit.com', password: 'cliente123', role: 'client', clientId: 'c_nova' },
-  ]
-  const clients = [
-    { id: 'c_abc', name: 'Empresa ABC', contact: 'Laura Gómez', email: 'cliente@abc.com', adsPerMonth: 5, status: 'activo', createdAt: now() },
-    { id: 'c_nova', name: 'Nova Fit', contact: 'Martín Pérez', email: 'cliente@novafit.com', adsPerMonth: 4, status: 'activo', createdAt: now() },
-  ]
-  const projects = [
-    { id: 'p_abc', clientId: 'c_abc', name: 'MetaFlash — Empresa ABC', ownerId: 'u_sofi', status: 'activo', start: d(-40), end: d(140) },
-    { id: 'p_nova', clientId: 'c_nova', name: 'MetaFlash — Nova Fit', ownerId: 'u_tomi', status: 'activo', start: d(-10), end: d(170) },
-  ]
-  const T = (o) => ({ id: uid(), description: '', priority: 'media', status: 'pendiente', visibleToClient: false, month: mk, createdAt: now(), ...o })
-  const tasks = [
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Enviar fotos de productos nuevos', description: 'Necesitamos 5-10 fotos en buena calidad de la nueva línea.', assigneeId: 'u_abc', due: d(2), priority: 'alta', visibleToClient: true }),
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Completar brief del mes', description: 'Promociones, fechas clave y objetivos del mes.', assigneeId: 'u_abc', due: d(-1), visibleToClient: true }),
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Investigación de competencia', assigneeId: 'u_sofi', due: d(1), status: 'progreso' }),
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Edición de video anuncio #3', assigneeId: 'u_tomi', due: d(4), status: 'revision' }),
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Configurar campañas del mes', assigneeId: 'u_sofi', due: d(-3), status: 'completada' }),
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Reunión de kickoff mensual', assigneeId: 'u_sofi', due: d(-8), status: 'completada', visibleToClient: true }),
-    T({ projectId: 'p_nova', clientId: 'c_nova', title: 'Grabar testimonios de socios', assigneeId: 'u_nova', due: d(5), visibleToClient: true }),
-    T({ projectId: 'p_nova', clientId: 'c_nova', title: 'Guiones de anuncios del mes', assigneeId: 'u_tomi', due: d(3), status: 'progreso' }),
-    T({ projectId: 'p_abc', clientId: 'c_abc', title: 'Configurar campañas del mes', assigneeId: 'u_sofi', due: shiftDate(d(-3), -1), status: 'completada', month: prev }),
-  ]
-  const hist = (action, by, comment) => ({ id: uid(), action, by, comment: comment || '', at: now() })
-  const deliverables = [
-    {
-      id: uid(), clientId: 'c_abc', projectId: 'p_abc', month: mk, type: 'guion', title: 'Guion #1 — "Ahorrá tiempo"', status: 'aprobacion', createdAt: now(),
-      versions: [{ n: 1, content: 'HOOK: ¿Seguís perdiendo horas en tareas que podrías automatizar?\n\nDESARROLLO: En Empresa ABC te ayudamos a...\n\nCTA: Escribinos por WhatsApp y pedí tu demo gratis.', by: 'u_sofi', at: now() }],
-      history: [hist('created', 'u_sofi'), hist('sent', 'u_sofi')],
-    },
-    {
-      id: uid(), clientId: 'c_abc', projectId: 'p_abc', month: mk, type: 'guion', title: 'Guion #2 — Testimonio', status: 'aprobado', createdAt: now(),
-      versions: [{ n: 1, content: 'Versión inicial...', by: 'u_sofi', at: now() }, { n: 2, content: 'HOOK: "Pensé que no iba a funcionar..."\n\nTestimonio de cliente real + CTA a WhatsApp.', by: 'u_sofi', at: now() }],
-      history: [hist('sent', 'u_sofi'), hist('changes', 'u_abc', 'Prefiero un tono más cercano.'), hist('sent', 'u_sofi'), hist('approved', 'u_abc')],
-    },
-    { id: uid(), clientId: 'c_abc', projectId: 'p_abc', month: mk, type: 'creatividad', title: 'Anuncio #1 — Imagen promo', status: 'aprobado', createdAt: now(), versions: [{ n: 1, mediaType: 'image', url: 'https://picsum.photos/seed/bull1/800/800', by: 'u_tomi', at: now() }], history: [hist('sent', 'u_tomi'), hist('approved', 'u_abc')] },
-    { id: uid(), clientId: 'c_abc', projectId: 'p_abc', month: mk, type: 'creatividad', title: 'Anuncio #2 — Carrusel', status: 'aprobado', createdAt: now(), versions: [{ n: 1, mediaType: 'image', url: 'https://picsum.photos/seed/bull2/800/800', by: 'u_tomi', at: now() }], history: [hist('sent', 'u_tomi'), hist('approved', 'u_abc')] },
-    { id: uid(), clientId: 'c_abc', projectId: 'p_abc', month: mk, type: 'creatividad', title: 'Anuncio #3 — Video testimonio', status: 'aprobacion', createdAt: now(), versions: [{ n: 1, mediaType: 'image', url: 'https://picsum.photos/seed/bull3/800/800', by: 'u_tomi', at: now() }], history: [hist('sent', 'u_tomi')] },
-  ]
-  const reports = [
-    {
-      id: uid(), clientId: 'c_abc', month: prev, title: `Reporte ${monthLabel(prev)}`, published: true, publishedAt: now(), readAt: null,
-      metrics: [{ label: 'Inversión', value: '$450.000' }, { label: 'Conversaciones', value: '312' }, { label: 'Costo por conversación', value: '$1.442' }, { label: 'Ventas reportadas', value: '41' }],
-      conclusions: 'El anuncio de testimonio fue el de mejor rendimiento, con un costo por conversación 28% menor al promedio.',
-      nextSteps: 'Producir 2 variantes más del testimonio y probar un nuevo público de intereses.',
-    },
-  ]
-  const news = [
-    { id: uid(), clientId: 'c_abc', text: 'Lanzamos las campañas del mes. Primeros resultados en 7 días.', by: 'u_sofi', at: now() },
-  ]
-  return { users, clients, projects, tasks, deliverables, reports, files: [], comments: [], notifications: [], news }
-}
-
-function load() {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (raw) return JSON.parse(raw)
-  } catch { /* noop */ }
-  return seed()
 }
 
 /* ---------------- Permisos ---------------- */
@@ -178,51 +105,136 @@ export function monthSummary(db, client, mk) {
   return { included, approved, waiting, pending, report, tasks: tasks.length, done, pct: included ? Math.round((approved / included) * 100) : 0 }
 }
 
-/* ---------------- Contexto ---------------- */
+/* ---------------- Contexto (Firebase) ---------------- */
 const Ctx = createContext(null)
+export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users']
+const empty = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]))
+const clean = (o) => JSON.parse(JSON.stringify(o)) // quita undefined (Firestore no los acepta)
 
 export function StoreProvider({ children }) {
-  const [db, setDb] = useState(load)
-  const [userId, setUserId] = useState(() => localStorage.getItem(SESSION))
+  const [db, setDb] = useState(empty)
+  const dbRef = useRef(db)
+  const [authUser, setAuthUser] = useState(undefined) // undefined = cargando
+  const [profile, setProfile] = useState(undefined)
+  dbRef.current = db
 
+  useEffect(() => onAuthStateChanged(auth, (u) => { setAuthUser(u); if (!u) { setProfile(null); setDb(empty()) } }), [])
+
+  // Perfil del usuario logueado (rol, cliente)
   useEffect(() => {
-    try { localStorage.setItem(KEY, JSON.stringify(db)) } catch (e) { alert('No hay más espacio de almacenamiento local. Borrá archivos grandes.'); console.error(e) }
-  }, [db])
+    if (!authUser) return
+    setProfile(undefined)
+    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => setProfile(s.exists() ? { ...s.data(), id: s.id } : null), () => setProfile(null))
+  }, [authUser])
 
-  // Sincroniza entre pestañas (ej.: admin en una pestaña y cliente en otra).
+  // Suscripciones en tiempo real según el rol
   useEffect(() => {
-    const on = (e) => { if (e.key === KEY && e.newValue) setDb(JSON.parse(e.newValue)) }
-    window.addEventListener('storage', on)
-    return () => window.removeEventListener('storage', on)
-  }, [])
+    if (!profile) return
+    const cid = profile.clientId
+    const staff = profile.role !== 'client'
+    const parts = {}
+    const put = (key, part, list) => {
+      parts[key] ||= {}
+      parts[key][part] = list
+      const merged = new Map()
+      Object.values(parts[key]).flat().forEach((x) => merged.set(x.id, x))
+      setDb((prev) => ({ ...prev, [key]: [...merged.values()] }))
+    }
+    const sub = (key, q, part = 'all') => onSnapshot(q, (snap) => put(key, part, snap.docs.map((d) => ({ ...d.data(), id: d.id }))), (e) => console.error(key, e))
+    const C = (k) => collection(fs, k)
+    let unsubs
+    if (staff) {
+      unsubs = COLLECTIONS.filter((k) => k !== 'notifications').map((k) => sub(k, C(k)))
+      unsubs.push(sub('notifications', query(C('notifications'), where('userId', '==', profile.id))))
+    } else {
+      unsubs = [
+        onSnapshot(doc(fs, 'clients', cid), (s) => put('clients', 'all', s.exists() ? [{ ...s.data(), id: s.id }] : [])),
+        sub('projects', query(C('projects'), where('clientId', '==', cid))),
+        sub('news', query(C('news'), where('clientId', '==', cid))),
+        sub('tasks', query(C('tasks'), where('clientId', '==', cid), where('visibleToClient', '==', true))),
+        sub('deliverables', query(C('deliverables'), where('clientId', '==', cid), where('status', 'in', ['aprobacion', 'cambios', 'aprobado']))),
+        sub('reports', query(C('reports'), where('clientId', '==', cid), where('published', '==', true))),
+        sub('files', query(C('files'), where('clientId', '==', cid), where('shared', '==', true))),
+        sub('comments', query(C('comments'), where('clientId', '==', cid), where('internal', '==', false))),
+        sub('notifications', query(C('notifications'), where('userId', '==', profile.id))),
+        sub('users', query(C('users'), where('role', 'in', ['admin', 'team'])), 'staff'),
+        onSnapshot(doc(fs, 'users', profile.id), (s) => put('users', 'me', s.exists() ? [{ ...s.data(), id: s.id }] : [])),
+      ]
+    }
+    return () => unsubs.forEach((u) => u())
+  }, [profile?.id, profile?.role, profile?.clientId]) // eslint-disable-line
 
-  const user = db.users.find((u) => u.id === userId) || null
+  const user = profile || null
   const view = useMemo(() => scopeFor(db, user), [db, user])
 
-  const mutate = useCallback((fn) => setDb((prev) => {
+  // Aplica la mutación localmente (optimista) y escribe en Firestore solo lo que cambió.
+  const mutate = useCallback((fn) => {
+    const prev = dbRef.current
     const next = structuredClone(prev)
-    fn(next)
-    return next
-  }), [])
+    const out = fn(next)
+    dbRef.current = next
+    setDb(next)
+    const batch = writeBatch(fs)
+    let n = 0
+    for (const k of COLLECTIONS) {
+      const before = new Map(prev[k].map((x) => [x.id, x]))
+      const after = new Map(next[k].map((x) => [x.id, x]))
+      for (const [id, x] of after) {
+        if (JSON.stringify(before.get(id)) !== JSON.stringify(x)) { batch.set(doc(fs, k, id), clean(x)); n++ }
+      }
+      for (const id of before.keys()) if (!after.has(id)) { batch.delete(doc(fs, k, id)); n++ }
+    }
+    if (n) batch.commit().catch((e) => { console.error(e); alert('No se pudo guardar: ' + e.message) })
+    return out
+  }, [])
 
-  const actions = useMemo(() => buildActions(mutate, () => user), [mutate, user])
+  const actions = useMemo(() => buildActions(mutate, () => user, () => dbRef.current), [mutate, user])
 
-  const login = (email, password) => {
-    const u = db.users.find((x) => x.email.toLowerCase() === email.trim().toLowerCase() && x.password === password)
-    if (!u) return false
-    localStorage.setItem(SESSION, u.id)
-    setUserId(u.id)
-    return true
+  const login = async (email, password) => {
+    try { await signInWithEmailAndPassword(auth, email.trim(), password); return null } catch (e) { return authError(e) }
   }
-  const logout = () => { localStorage.removeItem(SESSION); setUserId(null) }
-  const resetDemo = () => { setDb(seed()) }
+  // Primer acceso: crea el administrador inicial (solo funciona una vez; lo controlan las reglas).
+  const bootstrap = async (name, email, password) => {
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password)
+      const b = writeBatch(fs)
+      b.set(doc(fs, 'users', cred.user.uid), { id: cred.user.uid, name, email: email.trim(), role: 'admin' })
+      b.set(doc(fs, 'meta', 'setup'), { by: cred.user.uid, at: now() })
+      await b.commit()
+      return null
+    } catch (e) {
+      if (auth.currentUser) await signOut(auth)
+      return e.code === 'permission-denied' ? 'Ya existe un administrador. Pedile que te cree el acceso.' : authError(e)
+    }
+  }
+  const logout = () => signOut(auth)
+  const loading = authUser === undefined || (authUser && profile === undefined)
+  const noProfile = authUser && profile === null
 
-  return <Ctx.Provider value={{ db, view, user, actions, login, logout, resetDemo }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ db, view, user, actions, login, logout, bootstrap, loading, noProfile }}>{children}</Ctx.Provider>
 }
 export const useStore = () => useContext(Ctx)
 
+export function authError(e) {
+  const m = {
+    'auth/invalid-credential': 'Email o contraseña incorrectos.', 'auth/wrong-password': 'Email o contraseña incorrectos.', 'auth/user-not-found': 'Email o contraseña incorrectos.',
+    'auth/email-already-in-use': 'Ese email ya tiene una cuenta.', 'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+    'auth/invalid-email': 'El email no es válido.', 'auth/too-many-requests': 'Demasiados intentos. Probá en unos minutos.',
+  }
+  return m[e.code] || e.message
+}
+
+/* Crea una cuenta de acceso (Auth + perfil) sin cerrar la sesión actual. */
+export async function createAccount({ name, email, password, role, clientId }) {
+  const cred = await createUserWithEmailAndPassword(auth2, email.trim(), password)
+  await setDoc(doc(fs, 'users', cred.user.uid), clean({ id: cred.user.uid, name, email: email.trim(), role, clientId }))
+  await signOut(auth2)
+  return cred.user.uid
+}
+export const sendReset = (email) => sendPasswordResetEmail(auth, email)
+
 /* ---------------- Acciones + notificaciones ---------------- */
-function buildActions(mutate, getUser) {
+function buildActions(mutate, getUser, getDb) {
   const me = () => getUser()?.id
   const notify = (db, userIds, text, link, exclude = me()) => {
     for (const id of new Set(userIds)) {
@@ -238,20 +250,25 @@ function buildActions(mutate, getUser) {
 
   return {
     /* Clientes */
-    saveClient(c, login) {
-      mutate((db) => {
-        if (c.id) Object.assign(db.clients.find((x) => x.id === c.id), c)
-        else {
-          c = { ...c, id: uid(), createdAt: now(), status: c.status || 'activo' }
-          db.clients.push(c)
-          db.projects.push({ id: uid(), clientId: c.id, name: `MetaFlash — ${c.name}`, ownerId: me(), status: 'activo', start: new Date().toISOString().slice(0, 10), end: '' })
-        }
-        if (login?.email && login?.password) {
-          const ex = db.users.find((u) => u.role === 'client' && u.clientId === c.id)
-          if (ex) Object.assign(ex, { email: login.email, password: login.password, name: login.name || ex.name })
-          else db.users.push({ id: uid(), role: 'client', clientId: c.id, name: login.name || c.contact || c.name, email: login.email, password: login.password })
-        }
+    /* Devuelve un mensaje de error o null */
+    async saveClient(c, login) {
+      const id = mutate((db) => {
+        if (c.id) { Object.assign(db.clients.find((x) => x.id === c.id), c); return c.id }
+        const nc = { ...c, id: uid(), createdAt: now(), status: c.status || 'activo' }
+        db.clients.push(nc)
+        db.projects.push({ id: uid(), clientId: nc.id, name: `MetaFlash — ${nc.name}`, ownerId: me(), status: 'activo', start: new Date().toISOString().slice(0, 10), end: '' })
+        return nc.id
       })
+      if (!login?.email) return null
+      const ex = getDb().users.find((u) => u.role === 'client' && u.clientId === id)
+      try {
+        if (ex) {
+          if (login.name && login.name !== ex.name) mutate((db) => { db.users.find((u) => u.id === ex.id).name = login.name })
+          return null
+        }
+        await createAccount({ name: login.name || c.contact || c.name, email: login.email, password: login.password, role: 'client', clientId: id })
+        return null
+      } catch (e) { return authError(e) }
     },
     deleteClient(id) {
       mutate((db) => {
@@ -270,11 +287,12 @@ function buildActions(mutate, getUser) {
       })
     },
     /* Equipo */
-    saveUser(u) {
-      mutate((db) => {
-        if (u.id) Object.assign(db.users.find((x) => x.id === u.id), u)
-        else db.users.push({ ...u, id: uid() })
-      })
+    async saveUser(u) {
+      try {
+        if (u.id) { mutate((db) => { Object.assign(db.users.find((x) => x.id === u.id), { name: u.name, role: u.role }) }); return null }
+        await createAccount(u)
+        return null
+      } catch (e) { return authError(e) }
     },
     deleteUser(id) { mutate((db) => { db.users = db.users.filter((u) => u.id !== id) }) },
     /* Tareas */
@@ -378,7 +396,9 @@ function buildActions(mutate, getUser) {
     deleteReport(id) { mutate((db) => { db.reports = db.reports.filter((r) => r.id !== id) }) },
     /* Archivos */
     addFile(f) {
-      mutate((db) => { db.files.push({ shared: true, ...f, id: uid(), by: me(), at: now() }) })
+      const id = uid()
+      mutate((db) => { db.files.push({ shared: true, ...f, id, by: me(), at: now() }) })
+      return id
     },
     toggleFileShared(id) { mutate((db) => { const f = db.files.find((x) => x.id === id); f.shared = !f.shared }) },
     deleteFile(id) { mutate((db) => { db.files = db.files.filter((f) => f.id !== id) }) },

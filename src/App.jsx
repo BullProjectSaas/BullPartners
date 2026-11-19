@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useStore } from './store.jsx'
+import { useStore, sendReset } from './store.jsx'
 import { useRoute, go, Avatar } from './ui.jsx'
 import { AdminHome, ClientHome, NotificationsPage } from './pages/Home.jsx'
 import ClientsPage, { ClientDetail } from './pages/Clients.jsx'
@@ -11,23 +11,37 @@ import FilesPage from './pages/Files.jsx'
 import TeamPage from './pages/Team.jsx'
 
 function Login() {
-  const { login } = useStore()
+  const { login, bootstrap } = useStore()
+  const [mode, setMode] = useState('login')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [pw, setPw] = useState('')
   const [err, setErr] = useState('')
-  const demo = [['Admin', 'admin@bull.com', 'admin123'], ['Equipo', 'sofia@bull.com', 'equipo123'], ['Cliente', 'cliente@abc.com', 'cliente123']]
+  const [busy, setBusy] = useState(false)
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true); setErr('')
+    const r = mode === 'login' ? await login(email, pw) : await bootstrap(name.trim() || email, email, pw)
+    setBusy(false)
+    if (r) setErr(r)
+  }
+  const reset = async () => {
+    if (!email) return setErr('Escribí tu email y volvé a tocar "Olvidé mi contraseña".')
+    try { await sendReset(email.trim()); setErr(''); alert('Te enviamos un email para crear una nueva contraseña.') } catch (e) { setErr(e.message) }
+  }
   return (
     <div className="login">
-      <form className="login-card" onSubmit={(e) => { e.preventDefault(); if (!login(email, pw)) setErr('Email o contraseña incorrectos.') }}>
+      <form className="login-card" onSubmit={submit}>
         <div className="brand big"><span className="brand-mark">⚡</span><div><b>MetaFlash</b><small>by Bull Partners</small></div></div>
-        <h2>Ingresá a tu espacio</h2>
+        <h2>{mode === 'login' ? 'Ingresá a tu espacio' : 'Crear administrador inicial'}</h2>
+        {mode === 'setup' && <p className="muted sm mb">Solo se usa una vez, para crear la primera cuenta de Bull Partners.</p>}
+        {mode === 'setup' && <label className="field"><span>Tu nombre</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>}
         <label className="field"><span>Email</span><input type="email" autoFocus value={email} onChange={(e) => setEmail(e.target.value)} /></label>
         <label className="field"><span>Contraseña</span><input type="password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
         {err && <p className="err">{err}</p>}
-        <button className="btn primary big">Ingresar</button>
-        <div className="demo">
-          <small className="muted">Accesos de demostración</small>
-          <div className="row gap-s wrap">{demo.map(([l, e, p]) => <button type="button" key={l} className="chip" onClick={() => { setEmail(e); setPw(p) }}>{l}</button>)}</div>
+        <button className="btn primary big" disabled={busy}>{busy ? 'Un momento…' : mode === 'login' ? 'Ingresar' : 'Crear administrador'}</button>
+        <div className="demo row between">
+          {mode === 'login' ? <button type="button" className="link sm" onClick={reset}>Olvidé mi contraseña</button> : <span />}
+          <button type="button" className="link sm muted" onClick={() => { setMode(mode === 'login' ? 'setup' : 'login'); setErr('') }}>{mode === 'login' ? 'Primera vez (configuración)' : '‹ Volver al ingreso'}</button>
         </div>
       </form>
     </div>
@@ -42,9 +56,11 @@ const CLIENT_NAV = [['', '🏠', 'Inicio'], ['approvals', '✅', 'Aprobar'], ['r
 const MODAL_BG = { task: 'tasks', deliverable: 'approvals', report: 'reports' }
 
 export default function App() {
-  const { user, view, logout, resetDemo } = useStore()
+  const { user, view, logout, loading, noProfile } = useStore()
   const { parts } = useRoute()
   const [menu, setMenu] = useState(false)
+  if (loading) return <div className="login"><p className="muted">Cargando…</p></div>
+  if (noProfile) return <div className="login"><div className="login-card"><h2>Tu cuenta no tiene acceso</h2><p className="muted">Pedile a Bull Partners que te habilite.</p><button className="btn mt" onClick={logout}>Salir</button></div></div>
   if (!user) return <Login />
 
   const staff = user.role !== 'client'
@@ -95,7 +111,6 @@ export default function App() {
           <div className="row gap-s"><Avatar user={user} size={30} /><div className="grow"><b className="sm">{user.name}</b><small className="muted">{user.role === 'admin' ? 'Administrador' : user.role === 'team' ? 'Equipo' : 'Cliente'}</small></div></div>
           <div className="row gap-s mt-s">
             <button className="btn ghost sm" onClick={logout}>Salir</button>
-            {user.role === 'admin' && <button className="btn ghost sm" title="Vuelve a los datos de ejemplo" onClick={() => confirm('¿Restaurar los datos de demostración? Se pierde todo lo cargado.') && resetDemo()}>Reset demo</button>}
           </div>
         </div>
       </aside>

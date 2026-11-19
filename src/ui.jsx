@@ -104,15 +104,36 @@ export function UserSelect({ value, onChange, users, allowEmpty = true }) {
 }
 
 /* -------- Archivos -------- */
-const MAX = 3 * 1024 * 1024
-export function readFile(file) {
-  return new Promise((res, rej) => {
-    if (file.size > MAX) return rej(new Error(`"${file.name}" supera 3 MB (límite del modo demo).`))
-    const r = new FileReader()
-    r.onload = () => res({ name: file.name, size: file.size, mime: file.type, url: r.result })
-    r.onerror = rej
-    r.readAsDataURL(file)
-  })
+/* Sin Firebase Storage los archivos se guardan dentro de la base (máx. ~1 MB por documento).
+   Las imágenes se comprimen solas; para videos o archivos grandes se usa un link (Drive, etc.). */
+const MAX_B64 = 950000
+const toDataUrl = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob) })
+async function compressImage(file) {
+  const img = await createImageBitmap(file)
+  for (const [side, q] of [[1600, 0.85], [1280, 0.75], [1024, 0.7], [800, 0.6]]) {
+    const k = Math.min(1, side / Math.max(img.width, img.height))
+    const c = document.createElement('canvas')
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k)
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+    const url = c.toDataURL('image/jpeg', q)
+    if (url.length < MAX_B64) return url
+  }
+  throw new Error(`"${file.name}" es demasiado grande.`)
+}
+export async function readFile(file) {
+  if (file.type.startsWith('image/') && !file.type.includes('gif') && !file.type.includes('svg')) {
+    const url = await compressImage(file)
+    return { name: file.name, size: Math.round(url.length * 0.75), mime: 'image/jpeg', url }
+  }
+  const url = await toDataUrl(file)
+  if (url.length > MAX_B64) throw new Error(`"${file.name}" supera ~700 KB. Por ahora subilo a Google Drive y pegá el link en un comentario.`)
+  return { name: file.name, size: file.size, mime: file.type, url }
+}
+/* Resuelve referencias "file:<id>" a su contenido */
+export function useSrc(url) {
+  const { view } = useStore()
+  if (url?.startsWith('file:')) return view.files.find((f) => f.id === url.slice(5))?.url
+  return url
 }
 export function FilePicker({ onFiles, label = 'Adjuntar archivo', accept }) {
   return (

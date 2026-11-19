@@ -7,7 +7,7 @@ export default function FilesPage({ clientId, embedded }) {
   const staff = user.role !== 'client'
   const cid = clientId || (staff ? null : user.clientId)
   const [filter, setFilter] = useState('all')
-  let files = view.files.filter((f) => !cid || f.clientId === cid)
+  let files = view.files.filter((f) => f.kind !== 'media' && (!cid || f.clientId === cid))
   if (filter !== 'all') files = files.filter((f) => (filter === 'img' ? f.mime?.startsWith('image') : filter === 'vid' ? f.mime?.startsWith('video') : !f.mime?.startsWith('image') && !f.mime?.startsWith('video')))
   const groups = {}
   for (const f of files) {

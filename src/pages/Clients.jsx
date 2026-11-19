@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useStore, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
+import { useStore, sendReset, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
 import { Modal, Field, Card, Progress, Badge, Empty, Avatar, Tabs, Stat, UserSelect, go, fmtDate, fmtDateTime } from '../ui.jsx'
 import TasksPage, { TaskRow } from './Tasks.jsx'
 import ApprovalsPage, { DelivCard } from './Deliverables.jsx'
@@ -11,17 +11,20 @@ export function ClientModal({ client, onClose }) {
   const login = client && view.users.find((u) => u.role === 'client' && u.clientId === client.id)
   const [f, setF] = useState(client ? { ...client } : { name: '', contact: '', email: '', adsPerMonth: 4, status: 'activo' })
   const [acc, setAcc] = useState({ name: login?.name || '', email: login?.email || '', password: '' })
-  const save = () => {
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
     if (!f.name.trim()) return alert('Poné el nombre del cliente.')
-    if (!login && acc.email && !acc.password) return alert('Definí una contraseña para el acceso del cliente.')
-    if (acc.email && view.users.some((u) => u.email.toLowerCase() === acc.email.toLowerCase() && u.id !== login?.id)) return alert('Ese email ya está en uso.')
-    actions.saveClient(f, acc.email ? { ...acc, password: acc.password || login?.password } : null)
+    if (!login && acc.email && acc.password.length < 6) return alert('La contraseña del cliente debe tener al menos 6 caracteres.')
+    setBusy(true)
+    const err = await actions.saveClient(f, acc.email ? acc : null)
+    setBusy(false)
+    if (err) return alert('El cliente se guardó, pero no se pudo crear su acceso: ' + err)
     onClose()
   }
   return (
     <Modal title={client ? 'Editar cliente' : 'Nuevo cliente'} onClose={onClose} footer={<>
       {client && <button className="btn danger ghost" onClick={() => { if (confirm(`¿Eliminar ${client.name} y todos sus datos?`)) { actions.deleteClient(client.id); onClose(); go('#/clients') } }}>Eliminar</button>}
-      <span className="grow" /><button className="btn ghost" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={save}>Guardar</button></>}>
+      <span className="grow" /><button className="btn ghost" onClick={onClose}>Cancelar</button><button className="btn primary" disabled={busy} onClick={save}>{busy ? 'Guardando…' : 'Guardar'}</button></>}>
       <Field label="Nombre de la empresa"><input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
       <div className="grid2">
         <Field label="Contacto"><input value={f.contact} onChange={(e) => setF({ ...f, contact: e.target.value })} /></Field>
@@ -30,8 +33,9 @@ export function ClientModal({ client, onClose }) {
       <Field label="Estado del servicio"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="activo">Activo</option><option value="pausado">Pausado</option><option value="finalizado">Finalizado</option></select></Field>
       <h4>Acceso al portal del cliente</h4>
       <div className="grid2">
-        <Field label="Email de acceso"><input type="email" value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} /></Field>
-        <Field label={login ? 'Nueva contraseña (opcional)' : 'Contraseña'}><input value={acc.password} onChange={(e) => setAcc({ ...acc, password: e.target.value })} /></Field>
+        <Field label="Email de acceso"><input type="email" disabled={!!login} value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} /></Field>
+        {login ? <Field label="Contraseña"><button type="button" className="btn ghost sm" onClick={() => sendReset(login.email).then(() => alert('Le enviamos un email para cambiar la contraseña.'), (e) => alert(e.message))}>✉️ Enviar email para cambiarla</button></Field>
+          : <Field label="Contraseña inicial" hint="Mínimo 6 caracteres"><input value={acc.password} onChange={(e) => setAcc({ ...acc, password: e.target.value })} /></Field>}
       </div>
       <Field label="Nombre visible"><input value={acc.name} placeholder={f.contact} onChange={(e) => setAcc({ ...acc, name: e.target.value })} /></Field>
     </Modal>

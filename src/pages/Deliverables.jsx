@@ -1,14 +1,21 @@
 import { useState } from 'react'
 import { useStore, DELIV_STATUS, monthKey, monthLabel, addMonths } from '../store.jsx'
-import { Modal, Field, DelivBadge, Comments, Empty, readFile, fmtDateTime, go, Tabs, Badge } from '../ui.jsx'
+import { Modal, Field, DelivBadge, Comments, Empty, readFile, fmtDateTime, go, Tabs, Badge, useSrc } from '../ui.jsx'
 
 const ACTION_LABEL = { created: 'Creado', sent: 'Enviado a aprobación', approved: 'Aprobado', changes: 'Cambios solicitados', version: 'Nueva versión' }
 
 function Media({ v }) {
+  const src = useSrc(v?.url)
   if (!v) return null
   if (v.content != null) return <div className="script">{v.content}</div>
-  if (v.mediaType === 'video') return <video className="media" src={v.url} controls />
-  return <img className="media" src={v.url} alt="" />
+  if (v.mediaType === 'link') return <a className="linkbox" href={v.url} target="_blank" rel="noreferrer">▶ Abrir la pieza<small>{v.url}</small></a>
+  if (v.mediaType === 'video') return <video className="media" src={src} controls />
+  return <img className="media" src={src} alt="" />
+}
+function Thumb({ v }) {
+  const src = useSrc(v?.url)
+  if (v?.mediaType === 'link') return <p>🔗 Pieza en link externo</p>
+  return v?.mediaType === 'video' ? <video src={src} muted /> : <img src={src} alt="" />
 }
 
 export function DeliverableModal({ id, defaults = {}, onClose }) {
@@ -18,6 +25,7 @@ export function DeliverableModal({ id, defaults = {}, onClose }) {
   const [meta, setMeta] = useState(() => d ? { title: d.title, month: d.month } : { title: '', type: 'guion', month: monthKey(), clientId: view.clients[0]?.id, ...defaults })
   const [draft, setDraft] = useState('')
   const [media, setMedia] = useState(null)
+  const [link, setLink] = useState('')
   const [editing, setEditing] = useState(!d)
   const [showV, setShowV] = useState(null)
   const [reject, setReject] = useState(false)
@@ -34,11 +42,15 @@ export function DeliverableModal({ id, defaults = {}, onClose }) {
     if (!meta.title.trim()) return alert('Poné un título.')
     let payload = null
     if (type === 'guion' && draft.trim() && draft !== latest?.content) payload = { content: draft }
-    if (type === 'creatividad' && media) payload = { mediaType: media.mime.startsWith('video') ? 'video' : 'image', url: media.url, name: media.name }
-    if (!d && !payload) return alert(type === 'guion' ? 'Escribí el guion.' : 'Subí la imagen o video.')
     const project = view.projects.find((p) => p.clientId === (d?.clientId || meta.clientId))
+    if (type === 'creatividad' && link.trim()) payload = { mediaType: 'link', url: link.trim() }
+    else if (type === 'creatividad' && media) {
+      const fid = actions.addFile({ ...media, clientId: d?.clientId || meta.clientId, projectId: project?.id, shared: true, kind: 'media' })
+      payload = { mediaType: media.mime.startsWith('video') ? 'video' : 'image', url: 'file:' + fid, name: media.name }
+    }
+    if (!d && !payload) return alert(type === 'guion' ? 'Escribí el guion.' : 'Subí la imagen o pegá el link del video.')
     const newId = actions.saveDeliverable(d ? { id: d.id, ...meta } : { ...meta, projectId: project?.id }, payload, send)
-    setEditing(false); setDraft(''); setMedia(null); setShowV(null)
+    setEditing(false); setDraft(''); setMedia(null); setLink(''); setShowV(null)
     if (!d) { onClose(); go(`#/deliverable/${newId}`) }
   }
 
@@ -57,9 +69,10 @@ export function DeliverableModal({ id, defaults = {}, onClose }) {
       </div>
       {type === 'guion'
         ? <Field label={d ? `Versión ${d.versions.length + 1}` : 'Guion'}><textarea rows={10} value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={'HOOK: …\n\nDESARROLLO: …\n\nCTA: …'} /></Field>
-        : <Field label={d ? `Nueva versión (${d.versions.length + 1})` : 'Pieza'} hint="Imagen o video, hasta 3 MB en modo demo.">
+        : <Field label={d ? `Nueva versión (${d.versions.length + 1})` : 'Pieza'} hint="Imágenes: se comprimen solas. Videos: subilos a Google Drive (compartido con link) y pegá el link abajo.">
           <input type="file" accept="image/*,video/*" onChange={async (e) => { try { setMedia(await readFile(e.target.files[0])) } catch (err) { alert(err.message) } }} />
           {media && (media.mime.startsWith('video') ? <video className="media mt-s" src={media.url} controls /> : <img className="media mt-s" src={media.url} alt="" />)}
+          <input className="mt-s" placeholder="…o pegá un link (Google Drive, YouTube, Frame.io)" value={link} onChange={(e) => setLink(e.target.value)} />
         </Field>}
     </div>
   )
@@ -153,7 +166,7 @@ export function DelivCard({ d, showClient }) {
   return (
     <button className="dcard" onClick={() => go(`#/deliverable/${d.id}`)}>
       <div className="dthumb">
-        {d.type === 'guion' ? <p>{v?.content?.slice(0, 140)}</p> : v?.mediaType === 'video' ? <video src={v.url} muted /> : <img src={v?.url} alt="" />}
+        {d.type === 'guion' ? <p>{v?.content?.slice(0, 140)}</p> : <Thumb v={v} />}
       </div>
       <div className="dbody">
         <b>{d.title}</b>
