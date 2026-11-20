@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useStore, monthKey, monthLabel, addMonths } from '../store.jsx'
-import { Modal, Field, Empty, Badge, fmtDate, go } from '../ui.jsx'
+import { Modal, Field, Empty, Badge, fmtDate, go, VideoEmbed } from '../ui.jsx'
 
 const DEFAULT_METRICS = ['Inversión', 'Conversaciones', 'Costo por conversación', 'Ventas reportadas']
 
@@ -13,7 +13,6 @@ export function ReportModal({ id, defaults = {}, onClose }) {
     clientId: defaults.clientId || view.clients[0]?.id, month: addMonths(monthKey(), -1), title: '',
     metrics: DEFAULT_METRICS.map((label) => ({ label, value: '' })), conclusions: '', nextSteps: '',
   })
-  useEffect(() => { if (r && !staff && !r.readAt) actions.markReportRead(r.id) }, [r?.id]) // eslint-disable-line
   if (id && !r) return <Modal title="Reporte no disponible" onClose={onClose}><p>No existe o no tenés acceso.</p></Modal>
 
   const save = (publish) => {
@@ -48,6 +47,10 @@ export function ReportModal({ id, defaults = {}, onClose }) {
         ))}
         <button className="btn ghost sm" onClick={() => setF({ ...f, metrics: [...f.metrics, { label: '', value: '' }] })}>+ Métrica</button>
       </div>
+      <Field label="Video explicativo (opcional)" hint="Link de Fathom, Loom, Google Drive, YouTube o Vimeo. El cliente lo ve dentro del reporte.">
+        <input value={f.videoUrl || ''} placeholder="https://fathom.video/share/..." onChange={(e) => setF({ ...f, videoUrl: e.target.value })} />
+      </Field>
+      {f.videoUrl?.trim() && <div className="mb"><VideoEmbed url={f.videoUrl} /></div>}
       <Field label="Conclusiones"><textarea rows={4} value={f.conclusions} onChange={(e) => setF({ ...f, conclusions: e.target.value })} /></Field>
       <Field label="Próximos pasos"><textarea rows={3} value={f.nextSteps} onChange={(e) => setF({ ...f, nextSteps: e.target.value })} /></Field>
     </Modal>
@@ -66,8 +69,12 @@ export function ReportModal({ id, defaults = {}, onClose }) {
         {staff && (r.published ? (r.readAt ? <Badge color="#16A34A">👁 Leído por el cliente {fmtDate(r.readAt)}</Badge> : <Badge color="#D97706">Publicado · sin leer</Badge>) : <Badge color="#8A94A6">Borrador</Badge>)}
       </div>
       <div className="metrics">{r.metrics.map((m, i) => <div key={i} className="metric"><small>{m.label}</small><b>{m.value || '—'}</b></div>)}</div>
+      {r.videoUrl && <><h4>Video explicativo</h4><VideoEmbed url={r.videoUrl} /></>}
       {r.conclusions && <><h4>Conclusiones</h4><p className="pre">{r.conclusions}</p></>}
       {r.nextSteps && <><h4>Próximos pasos</h4><p className="pre">{r.nextSteps}</p></>}
+      {!staff && (r.readAt
+        ? <div className="callout ok mt">✅ Marcaste este reporte como visto el {fmtDate(r.readAt)}.</div>
+        : <button className="btn success big mt" onClick={() => actions.markReportRead(r.id)}>✓ Marcar como visto</button>)}
     </Modal>
   )
 }

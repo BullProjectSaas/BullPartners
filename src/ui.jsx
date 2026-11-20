@@ -234,3 +234,27 @@ export function ThemeToggle() {
   }
   return <button className="btn ghost sm theme-btn" onClick={(e) => { e.stopPropagation(); toggle() }}>{t === 'dark' ? '☀️ Modo claro' : '🌙 Modo oscuro'}</button>
 }
+
+/* -------- Videos por link (Drive, YouTube, Loom, Fathom, Vimeo) con vista previa -------- */
+export function embedUrl(url = '') {
+  const u = url.trim()
+  let m
+  if ((m = u.match(/drive\.google\.com\/file\/d\/([^/?#]+)/))) return `https://drive.google.com/file/d/${m[1]}/preview`
+  if ((m = u.match(/drive\.google\.com\/open\?id=([^&#]+)/))) return `https://drive.google.com/file/d/${m[1]}/preview`
+  if ((m = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{6,})/))) return `https://www.youtube.com/embed/${m[1]}`
+  if ((m = u.match(/loom\.com\/(?:share|embed)\/([\w]+)/))) return `https://www.loom.com/embed/${m[1]}`
+  if ((m = u.match(/fathom\.video\/(?:share|embed)\/([\w-]+)/))) return `https://fathom.video/embed/${m[1]}`
+  if ((m = u.match(/vimeo\.com\/(\d+)/))) return `https://player.vimeo.com/video/${m[1]}`
+  return null
+}
+export function VideoEmbed({ url, vertical }) {
+  if (!url) return null
+  const src = embedUrl(url)
+  return (
+    <div className="embed-wrap">
+      {src ? <div className={'embed' + (vertical ? ' vertical' : '')}><iframe src={src} allow="autoplay; fullscreen; picture-in-picture" allowFullScreen title="video" /></div>
+        : <div className="linkbox">No se puede previsualizar este link</div>}
+      <a className="sm link" href={url} target="_blank" rel="noreferrer">Abrir en una pestaña nueva ↗</a>
+    </div>
+  )
+}

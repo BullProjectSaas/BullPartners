@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useStore, DELIV_STATUS, monthKey, monthLabel, addMonths } from '../store.jsx'
-import { Modal, Field, DelivBadge, Comments, Empty, readFile, fmtDateTime, go, Tabs, Badge, useSrc } from '../ui.jsx'
+import { Modal, Field, DelivBadge, Comments, Empty, readFile, fmtDateTime, go, Tabs, Badge, useSrc, VideoEmbed, embedUrl } from '../ui.jsx'
 
 const ACTION_LABEL = { created: 'Creado', sent: 'Enviado a aprobación', approved: 'Aprobado', changes: 'Cambios solicitados', version: 'Nueva versión' }
 
@@ -8,13 +8,13 @@ function Media({ v }) {
   const src = useSrc(v?.url)
   if (!v) return null
   if (v.content != null) return <div className="script">{v.content}</div>
-  if (v.mediaType === 'link') return <a className="linkbox" href={v.url} target="_blank" rel="noreferrer">▶ Abrir la pieza<small>{v.url}</small></a>
+  if (v.mediaType === 'link') return <VideoEmbed url={v.url} vertical />
   if (v.mediaType === 'video') return <video className="media" src={src} controls />
   return <img className="media" src={src} alt="" />
 }
 function Thumb({ v }) {
   const src = useSrc(v?.url)
-  if (v?.mediaType === 'link') return <p>🔗 Pieza en link externo</p>
+  if (v?.mediaType === 'link') return embedUrl(v.url) ? <div className="thumb-embed"><iframe src={embedUrl(v.url)} title="" tabIndex={-1} /></div> : <p>🔗 Pieza en link externo</p>
   return v?.mediaType === 'video' ? <video src={src} muted /> : <img src={src} alt="" />
 }
 
@@ -72,7 +72,8 @@ export function DeliverableModal({ id, defaults = {}, onClose }) {
         : <Field label={d ? `Nueva versión (${d.versions.length + 1})` : 'Pieza'} hint="Imágenes: se comprimen solas. Videos: subilos a Google Drive (compartido con link) y pegá el link abajo.">
           <input type="file" accept="image/*,video/*" onChange={async (e) => { try { setMedia(await readFile(e.target.files[0])) } catch (err) { alert(err.message) } }} />
           {media && (media.mime.startsWith('video') ? <video className="media mt-s" src={media.url} controls /> : <img className="media mt-s" src={media.url} alt="" />)}
-          <input className="mt-s" placeholder="…o pegá un link (Google Drive, YouTube, Frame.io)" value={link} onChange={(e) => setLink(e.target.value)} />
+          <input className="mt-s" placeholder="…o pegá un link (Google Drive, YouTube, Loom, Vimeo)" value={link} onChange={(e) => setLink(e.target.value)} />
+          {link.trim() && <div className="mt-s"><VideoEmbed url={link} vertical /></div>}
         </Field>}
     </div>
   )
@@ -160,6 +161,36 @@ export function DeliverableModal({ id, defaults = {}, onClose }) {
   )
 }
 
+export function BulkModal({ defaults = {}, onClose }) {
+  const { view, actions } = useStore()
+  const [clientId, setClientId] = useState(defaults.clientId || view.clients[0]?.id)
+  const [month, setMonth] = useState(monthKey())
+  const [links, setLinks] = useState('')
+  const [send, setSend] = useState(true)
+  const list = links.split('\n').map((l) => l.trim()).filter(Boolean)
+  const existing = view.deliverables.filter((d) => d.clientId === clientId && d.month === month && d.type === 'creatividad').length
+  const save = () => {
+    if (!clientId) return alert('Elegí un cliente.')
+    if (!list.length) return alert('Pegá al menos un link.')
+    const project = view.projects.find((p) => p.clientId === clientId)
+    list.forEach((url, i) => actions.saveDeliverable({ clientId, projectId: project?.id, month, type: 'creatividad', title: `Anuncio #${existing + i + 1}` }, { mediaType: 'link', url }, send))
+    alert(`${list.length} anuncio${list.length > 1 ? 's' : ''} ${send ? 'enviados a aprobación' : 'guardados como borrador'}.`)
+    onClose()
+  }
+  return (
+    <Modal title="Cargar anuncios en lote" onClose={onClose} footer={<><span className="grow" /><button className="btn ghost" onClick={onClose}>Cancelar</button><button className="btn primary" onClick={save}>Cargar {list.length || ''} anuncio{list.length === 1 ? '' : 's'}</button></>}>
+      <div className="grid2">
+        <Field label="Cliente"><select value={clientId} onChange={(e) => setClientId(e.target.value)}>{view.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        <Field label="Mes"><select value={month} onChange={(e) => setMonth(e.target.value)}>{[-1, 0, 1].map((n) => { const m = addMonths(monthKey(), n); return <option key={m} value={m}>{monthLabel(m)}</option> })}</select></Field>
+      </div>
+      <Field label="Links de los anuncios" hint="Uno por línea (Google Drive, YouTube, Loom, Vimeo). Se nombran Anuncio #1, #2… y se pueden renombrar después.">
+        <textarea className="bulk-list" rows={8} value={links} onChange={(e) => setLinks(e.target.value)} placeholder={'https://drive.google.com/file/d/...\nhttps://drive.google.com/file/d/...'} />
+      </Field>
+      <label className="check"><input type="checkbox" checked={send} onChange={(e) => setSend(e.target.checked)} /> Enviar directo a aprobación del cliente</label>
+    </Modal>
+  )
+}
+
 export function DelivCard({ d, showClient }) {
   const { view } = useStore()
   const v = d.versions[d.versions.length - 1]
@@ -183,6 +214,7 @@ export default function ApprovalsPage({ clientId, embedded }) {
   const [tab, setTab] = useState(staff ? 'aprobacion' : 'pending')
   const [type, setType] = useState('all')
   const [creating, setCreating] = useState(false)
+  const [bulk, setBulk] = useState(false)
   let list = view.deliverables
   if (clientId) list = list.filter((d) => d.clientId === clientId)
   if (type !== 'all') list = list.filter((d) => d.type === type)
@@ -190,20 +222,21 @@ export default function ApprovalsPage({ clientId, embedded }) {
   const tabs = staff
     ? [{ id: 'aprobacion', label: 'Esperando cliente', count: count('aprobacion') }, { id: 'cambios', label: 'Cambios solicitados', count: count('cambios') }, { id: 'borrador', label: 'Borradores', count: count('borrador') }, { id: 'aprobado', label: 'Aprobados' }, { id: 'all', label: 'Todos' }]
     : [{ id: 'pending', label: 'Para aprobar', count: count('aprobacion') }, { id: 'all', label: 'Todo' }]
-  const shown = list.filter((d) => tab === 'all' || (tab === 'pending' ? d.status === 'aprobacion' : d.status === tab)).sort((a, b) => b.month.localeCompare(a.month))
+  const shown = list.filter((d) => tab === 'all' || (tab === 'pending' ? d.status === 'aprobacion' : d.status === tab)).sort((a, b) => b.month.localeCompare(a.month) || a.title.localeCompare(b.title, 'es', { numeric: true }))
 
   return (
     <div>
       {!embedded && <div className="page-h"><div><h1>{staff ? 'Aprobaciones' : 'Aprobaciones'}</h1><p className="muted">{staff ? 'Guiones y creatividades enviados a los clientes.' : 'Revisá y aprobá los guiones y anuncios que preparamos para vos.'}</p></div>
-        {staff && <button className="btn primary" onClick={() => setCreating(true)}>+ Nuevo entregable</button>}</div>}
+        {staff && <div className="row gap-s"><button className="btn" onClick={() => setBulk(true)}>⧉ Cargar en lote</button><button className="btn primary" onClick={() => setCreating(true)}>+ Nuevo entregable</button></div>}</div>}
       <div className="toolbar">
         <Tabs tabs={tabs} value={tab} onChange={setTab} />
         <select value={type} onChange={(e) => setType(e.target.value)}><option value="all">Guiones y creatividades</option><option value="guion">Solo guiones</option><option value="creatividad">Solo creatividades</option></select>
-        {embedded && staff && <button className="btn primary sm" onClick={() => setCreating(true)}>+ Entregable</button>}
+        {embedded && staff && <><button className="btn sm" onClick={() => setBulk(true)}>⧉ En lote</button><button className="btn primary sm" onClick={() => setCreating(true)}>+ Entregable</button></>}
       </div>
       {shown.length ? <div className="dgrid">{shown.map((d) => <DelivCard key={d.id} d={d} showClient={staff && !clientId} />)}</div>
         : <Empty icon="🎉" title={tab === 'pending' ? 'No tenés nada pendiente de aprobar' : 'Nada por acá'} />}
       {creating && <DeliverableModal defaults={clientId ? { clientId } : {}} onClose={() => setCreating(false)} />}
+      {bulk && <BulkModal defaults={clientId ? { clientId } : {}} onClose={() => setBulk(false)} />}
     </div>
   )
 }

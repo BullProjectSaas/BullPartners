@@ -3,7 +3,6 @@ import { Card, Stat, Empty, Progress, Badge, go, today, fmtDateTime, isOverdue }
 import { TaskRow } from './Tasks.jsx'
 import { DelivCard } from './Deliverables.jsx'
 import { ReportRow } from './Reports.jsx'
-import { MonthPanel } from './Clients.jsx'
 
 export function AdminHome() {
   const { view, user } = useStore()
@@ -99,7 +98,6 @@ export function ClientHome() {
         </Card>
       )}
 
-      <MonthPanel client={client} compact />
 
       <div className="grid2">
         <Card title="En qué estamos trabajando">

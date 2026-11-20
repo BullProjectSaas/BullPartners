@@ -53,6 +53,7 @@ const STAFF_NAV = [
 ]
 const CLIENT_NAV = [['', '🏠', 'Inicio'], ['approvals', '✅', 'Aprobar'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['calendar', '📅', 'Calendario']]
 const MODAL_BG = { task: 'tasks', deliverable: 'approvals', report: 'reports' }
+let lastBg = null // última página (no modal) visitada
 
 export default function App() {
   const { user, view, logout, loading, noProfile, authUser, profileError } = useStore()
@@ -64,14 +65,17 @@ export default function App() {
 
   const staff = user.role !== 'client'
   let [page, id] = parts
+  if (lastBg === null && !MODAL_BG[page]) lastBg = parts.join('/')
   let modal = null
   if (MODAL_BG[page]) {
     const close = () => (window.history.length > 1 ? window.history.back() : go('#/'))
     if (page === 'task') modal = <TaskModal key={id} taskId={id} onClose={close} />
     if (page === 'deliverable') modal = <DeliverableModal key={id} id={id} onClose={close} />
     if (page === 'report') modal = <ReportModal key={id} id={id} onClose={close} />
-    page = staff ? MODAL_BG[page] : ''
-    id = undefined
+    // Detrás del modal se mantiene la página donde estabas.
+    ;[page, id] = (lastBg || (staff ? MODAL_BG[page] : '')).split('/')
+  } else {
+    lastBg = parts.join('/')
   }
   page = page || ''
   const nav = staff ? STAFF_NAV.filter(([k]) => k !== 'team' || user.role === 'admin') : CLIENT_NAV

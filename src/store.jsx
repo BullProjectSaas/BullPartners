@@ -446,7 +446,10 @@ function buildActions(mutate, getUser, getDb) {
     markReportRead(id) {
       mutate((db) => {
         const r = db.reports.find((x) => x.id === id)
-        if (r && !r.readAt) r.readAt = now()
+        if (r && !r.readAt) {
+          r.readAt = now()
+          notify(db, staffFor(db, r.clientId), `${getUser()?.name} vio el reporte "${r.title}"`, `#/report/${id}`)
+        }
       })
     },
     deleteReport(id) { mutate((db) => { db.reports = db.reports.filter((r) => r.id !== id) }) },
