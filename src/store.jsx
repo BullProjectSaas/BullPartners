@@ -110,6 +110,13 @@ const Ctx = createContext(null)
 export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users']
 const empty = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]))
 const clean = (o) => JSON.parse(JSON.stringify(o)) // quita undefined (Firestore no los acepta)
+/* Tolera perfiles cargados a mano: "Role ", " admin", sin nombre, etc. */
+function normUser(raw, id) {
+  const u = {}
+  for (const [k, v] of Object.entries(raw || {})) u[k.trim().replace(/^./, (c) => c.toLowerCase())] = typeof v === 'string' ? v.trim() : v
+  const role = String(u.role || '').toLowerCase()
+  return { ...u, id, role: ['admin', 'team', 'client'].includes(role) ? role : 'client', name: u.name || u.email || 'Usuario', email: u.email || '' }
+}
 
 export function StoreProvider({ children }) {
   const [db, setDb] = useState(empty)
@@ -125,7 +132,7 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!authUser) return
     setProfile(undefined)
-    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => { setProfileError(''); setProfile(s.exists() ? { ...s.data(), id: s.id } : null) }, (e) => { setProfileError(e.code || e.message); setProfile(null) })
+    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => { setProfileError(''); setProfile(s.exists() ? normUser(s.data(), s.id) : null) }, (e) => { setProfileError(e.code || e.message); setProfile(null) })
   }, [authUser])
 
   // Suscripciones en tiempo real según el rol
@@ -141,7 +148,7 @@ export function StoreProvider({ children }) {
       Object.values(parts[key]).flat().forEach((x) => merged.set(x.id, x))
       setDb((prev) => ({ ...prev, [key]: [...merged.values()] }))
     }
-    const sub = (key, q, part = 'all') => onSnapshot(q, (snap) => put(key, part, snap.docs.map((d) => ({ ...d.data(), id: d.id }))), (e) => console.error(key, e))
+    const sub = (key, q, part = 'all') => onSnapshot(q, (snap) => put(key, part, snap.docs.map((d) => (key === 'users' ? normUser(d.data(), d.id) : { ...d.data(), id: d.id })))), (e) => console.error(key, e))
     const C = (k) => collection(fs, k)
     let unsubs
     if (staff) {
@@ -159,7 +166,7 @@ export function StoreProvider({ children }) {
         sub('comments', query(C('comments'), where('clientId', '==', cid), where('internal', '==', false))),
         sub('notifications', query(C('notifications'), where('userId', '==', profile.id))),
         sub('users', query(C('users'), where('role', 'in', ['admin', 'team'])), 'staff'),
-        onSnapshot(doc(fs, 'users', profile.id), (s) => put('users', 'me', s.exists() ? [{ ...s.data(), id: s.id }] : [])),
+        onSnapshot(doc(fs, 'users', profile.id), (s) => put('users', 'me', s.exists() ? [normUser(s.data(), s.id)] : [])),
       ]
     }
     return () => unsubs.forEach((u) => u())
