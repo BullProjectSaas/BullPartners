@@ -135,13 +135,16 @@ export function StoreProvider({ children }) {
     setProfile(undefined)
     return onSnapshot(doc(fs, 'users', authUser.uid), { includeMetadataChanges: true }, (s) => {
       setProfileError('')
-      if (!s.exists() && !s.metadata.fromCache && OWNERS.includes((authUser.email || '').toLowerCase())) {
-        // Dueño sin perfil: se recrea solo como administrador.
-        setDoc(doc(fs, 'users', authUser.uid), { id: authUser.uid, name: 'Leonel', email: authUser.email, role: 'admin' })
-          .catch((e) => { setProfileError('No se pudo crear el perfil: ' + (e.code || e.message)); setProfile(null) })
+      const isOwner = OWNERS.includes((authUser.email || '').toLowerCase())
+      if (!s.exists() && isOwner) {
+        // Dueño sin perfil: entra igual como admin y se le recrea el perfil en segundo plano.
+        const own = { id: authUser.uid, name: 'Leonel', email: authUser.email, role: 'admin' }
+        setProfile((prev) => (prev?.id === own.id ? prev : own))
+        if (!s.metadata.fromCache) setDoc(doc(fs, 'users', authUser.uid), own).catch(() => {})
         return
       }
-      if (s.metadata.hasPendingWrites) return // esperar confirmación del servidor antes de suscribirse
+      if (s.metadata.hasPendingWrites) return
+      if (!s.exists() && s.metadata.fromCache) return // esperar respuesta del servidor
       const n = s.exists() ? normUser(s.data(), s.id) : null
       setProfile((prev) => (JSON.stringify(prev) === JSON.stringify(n) ? prev : n))
     }, (e) => { setProfileError(e.code || e.message); setProfile(null) })

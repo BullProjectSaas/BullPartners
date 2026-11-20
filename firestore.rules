@@ -3,14 +3,14 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signed() { return request.auth != null; }
     function path(c, id) { return /databases/$(database)/documents/$(c)/$(id); }
+    // Dueño: acceso total por email, aunque su perfil no exista o cambie su ID.
+    function owner() { return signed() && request.auth.token.email in ['leonellallanapersonal@gmail.com']; }
     function hasProfile() { return signed() && exists(path('users', request.auth.uid)); }
     function me() { return get(path('users', request.auth.uid)).data; }
-    function staff() { return hasProfile() && me().role in ['admin', 'team']; }
-    function admin() { return hasProfile() && me().role == 'admin'; }
-    function clientOf(cid) { return hasProfile() && me().role == 'client' && me().clientId == cid; }
+    function staff() { return owner() || (hasProfile() && me().role in ['admin', 'team']); }
+    function admin() { return owner() || (hasProfile() && me().role == 'admin'); }
+    function clientOf(cid) { return !owner() && hasProfile() && me().role == 'client' && me().clientId == cid; }
     function mine() { return clientOf(resource.data.clientId); }
-    // Dueños: si pierden su perfil, la app se los vuelve a crear como admin.
-    function owner() { return signed() && request.auth.token.email in ['leonellallanapersonal@gmail.com']; }
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
 
     // Configuración inicial: se puede crear UNA sola vez, junto con el primer admin.
@@ -63,7 +63,7 @@ service cloud.firestore {
     }
     match /notifications/{id} {
       allow read: if signed() && resource.data.userId == request.auth.uid;
-      allow create: if hasProfile();
+      allow create: if staff() || hasProfile();
       allow update: if signed() && resource.data.userId == request.auth.uid && onlyChanges(['read']);
       allow delete: if admin();
     }
