@@ -10,20 +10,23 @@ export function TaskModal({ taskId, defaults = {}, onClose }) {
   const [f, setF] = useState(() => existing ? { ...existing } : {
     ...Object.fromEntries(Object.entries(defaults).filter(([, v]) => v !== undefined)),
     title: '', description: '', priority: 'media', visibleToClient: false,
-    projectId: defaults.projectId || view.projects[0]?.id, assigneeId: defaults.assigneeId || null, due: defaults.due || '', status: defaults.status || 'pendiente',
+    clientId: defaults.clientId || view.projects.find((p) => p.id === defaults.projectId)?.clientId || view.clients[0]?.id,
+    projectId: defaults.projectId || null, assigneeId: defaults.assigneeId || null, due: defaults.due || '', status: defaults.status || 'pendiente',
   })
   if (taskId && !existing) return <Modal title="Tarea no disponible" onClose={onClose}><p>Esta tarea no existe o no tenés acceso.</p></Modal>
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v?.target ? (v.target.type === 'checkbox' ? v.target.checked : v.target.value) : v }))
   const project = view.projects.find((p) => p.id === f.projectId)
-  const client = view.clients.find((c) => c.id === project?.clientId)
-  const assignable = view.users.filter((u) => u.role !== 'client' || u.clientId === project?.clientId)
+  const clientId = project?.clientId || f.clientId
+  const client = view.clients.find((c) => c.id === clientId)
+  const assignable = view.users.filter((u) => u.role !== 'client' || u.clientId === clientId)
+  const clientProjects = view.projects.filter((p) => p.clientId === clientId)
   const files = existing ? view.files.filter((x) => x.taskId === existing.id) : []
 
   const save = () => {
     if (!f.title.trim()) return alert('La tarea necesita un título.')
-    if (!f.projectId) return alert('Elegí un proyecto.')
+    if (!clientId) return alert('Elegí un cliente.')
     const assignee = view.users.find((u) => u.id === f.assigneeId)
-    const data = { ...f, visibleToClient: f.visibleToClient || assignee?.role === 'client' }
+    const data = { ...f, clientId, visibleToClient: f.visibleToClient || assignee?.role === 'client' }
     actions.saveTask(data)
     onClose()
   }
@@ -71,11 +74,17 @@ export function TaskModal({ taskId, defaults = {}, onClose }) {
           {!existing && <p className="muted sm">Podrás adjuntar archivos y comentar después de crearla.</p>}
         </div>
         <aside className="props">
-          <Field label="Proyecto">
-            <select value={f.projectId || ''} onChange={set('projectId')}>
-              {view.projects.map((p) => <option key={p.id} value={p.id}>{view.clients.find((c) => c.id === p.clientId)?.name} · {p.name}</option>)}
+          <Field label="Cliente">
+            <select value={clientId || ''} onChange={(e) => setF((p) => ({ ...p, clientId: e.target.value, projectId: null, assigneeId: null }))}>
+              {view.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
+          {clientProjects.length > 0 && <Field label="Proyecto (opcional)">
+            <select value={f.projectId || ''} onChange={(e) => setF((p) => ({ ...p, projectId: e.target.value || null }))}>
+              <option value="">Sin proyecto</option>
+              {clientProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </Field>}
           <Field label="Estado"><select value={f.status} onChange={set('status')}>{TASK_STATUS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></Field>
           <Field label="Responsable"><UserSelect users={assignable} value={f.assigneeId} onChange={set('assigneeId')} /></Field>
           <Field label="Vencimiento"><input type="date" value={f.due || ''} onChange={set('due')} /></Field>
@@ -130,7 +139,6 @@ export default function TasksPage({ clientId, embedded }) {
   if (month === 'current') tasks = tasks.filter((t) => t.month === monthKey())
   tasks = [...tasks].sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'))
 
-  const defaultProject = cl !== 'all' ? view.projects.find((p) => p.clientId === cl)?.id : undefined
 
   return (
     <div>
@@ -189,7 +197,7 @@ export default function TasksPage({ clientId, embedded }) {
           })}
         </div>
       )}
-      {creating && <TaskModal defaults={{ projectId: defaultProject, ...(typeof creating === 'object' ? creating : {}) }} onClose={() => setCreating(false)} />}
+      {creating && <TaskModal defaults={{ clientId: cl !== 'all' ? cl : undefined, ...(typeof creating === 'object' ? creating : {}) }} onClose={() => setCreating(false)} />}
     </div>
   )
 }

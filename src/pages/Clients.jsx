@@ -9,7 +9,7 @@ import FilesPage from './Files.jsx'
 export function ClientModal({ client, onClose }) {
   const { actions, view } = useStore()
   const login = client && view.users.find((u) => u.role === 'client' && u.clientId === client.id)
-  const [f, setF] = useState(client ? { ...client } : { name: '', contact: '', email: '', adsPerMonth: 4, status: 'activo' })
+  const [f, setF] = useState(client ? { ...client } : { name: '', contact: '', email: '', status: 'activo' })
   const [acc, setAcc] = useState({ name: login?.name || '', email: login?.email || '', password: '' })
   const [busy, setBusy] = useState(false)
   const save = async () => {
@@ -28,7 +28,6 @@ export function ClientModal({ client, onClose }) {
       <Field label="Nombre de la empresa"><input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
       <div className="grid2">
         <Field label="Contacto"><input value={f.contact} onChange={(e) => setF({ ...f, contact: e.target.value })} /></Field>
-        <Field label="Anuncios incluidos por mes"><input type="number" min="0" value={f.adsPerMonth} onChange={(e) => setF({ ...f, adsPerMonth: Number(e.target.value) })} /></Field>
       </div>
       <Field label="Estado del servicio"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="activo">Activo</option><option value="pausado">Pausado</option><option value="finalizado">Finalizado</option></select></Field>
       <h4>Acceso al portal del cliente</h4>
@@ -46,7 +45,7 @@ function ProjectModal({ project, clientId, onClose }) {
   const { actions, view } = useStore()
   const [f, setF] = useState(project ? { ...project } : { clientId, name: '', ownerId: null, status: 'activo', start: new Date().toISOString().slice(0, 10), end: '' })
   return (
-    <Modal title={project ? 'Editar proyecto' : 'Nuevo proyecto'} onClose={onClose} footer={<><span className="grow" /><button className="btn ghost" onClick={onClose}>Cancelar</button>
+    <Modal title={project ? 'Editar proyecto' : 'Nuevo proyecto'} onClose={onClose} footer={<>{project && <button className="btn danger ghost" onClick={() => { if (confirm('¿Eliminar este proyecto? Sus tareas y entregables se conservan.')) { actions.deleteProject(project.id); onClose() } }}>Eliminar</button>}<span className="grow" /><button className="btn ghost" onClick={onClose}>Cancelar</button>
       <button className="btn primary" onClick={() => { if (!f.name.trim()) return alert('Poné un nombre.'); actions.saveProject(f); onClose() }}>Guardar</button></>}>
       <Field label="Nombre"><input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
       <div className="grid2">
@@ -71,14 +70,11 @@ export function MonthPanel({ client, compact }) {
         const n = actions.duplicateMonth(client.id, mk)
         alert(n ? `${n} tareas copiadas a ${monthLabel(addMonths(mk, 1))}.` : 'Este mes no tiene tareas para copiar.')
       }}>⧉ Duplicar tareas al mes siguiente</button>}>
-      <div className="month-bar">
-        {Array.from({ length: s.included }, (_, i) => <span key={i} className={i < s.approved ? 'ok' : i < s.approved + s.waiting ? 'wait' : ''} />)}
-      </div>
       <div className="stats4">
-        <Stat label="Anuncios incluidos" value={s.included} />
+        <Stat label="Anuncios del mes" value={s.total} />
         <Stat label="Aprobados" value={s.approved} color="#16A34A" />
         <Stat label="Esperando aprobación" value={s.waiting} color="#D97706" />
-        <Stat label="Pendientes de producción" value={s.pending} color="#64748B" />
+        <Stat label="Con cambios pedidos" value={s.changes} color="#DC2626" />
       </div>
       <div className="row between mt-s sm">
         <span className="muted">Tareas del mes: {s.done}/{s.tasks} completadas</span>
@@ -144,7 +140,7 @@ export function ClientDetail({ id }) {
     <div>
       <button className="link sm" onClick={() => go('#/clients')}>‹ Clientes</button>
       <div className="page-h">
-        <div className="row gap"><span className="logo-c">{client.name[0]}</span><div><h1>{client.name}</h1><p className="muted">{client.contact} · {client.adsPerMonth} anuncios/mes · <Badge color={PROJECT_STATUS[client.status]?.color || '#16A34A'}>{PROJECT_STATUS[client.status]?.label || 'Activo'}</Badge></p></div></div>
+        <div className="row gap"><span className="logo-c">{client.name[0]}</span><div><h1>{client.name}</h1><p className="muted">{client.contact && <>{client.contact} · </>}<Badge color={PROJECT_STATUS[client.status]?.color || '#16A34A'}>{PROJECT_STATUS[client.status]?.label || 'Activo'}</Badge></p></div></div>
         {user.role === 'admin' && <button className="btn" onClick={() => setEditing(true)}>Editar cliente</button>}
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[
@@ -180,8 +176,7 @@ export default function ClientsPage() {
             <button key={c.id} className="ccard" onClick={() => go(`#/clients/${c.id}`)}>
               <div className="row gap"><span className="logo-c">{c.name[0]}</span><div className="grow"><b>{c.name}</b><small className="muted">{c.contact}</small></div>
                 {c.status !== 'activo' && <Badge color="#D97706">{PROJECT_STATUS[c.status]?.label}</Badge>}</div>
-              <div className="row between sm"><span className="muted">{monthLabel(monthKey())}</span><span>{s.approved}/{s.included} anuncios</span></div>
-              <Progress value={s.pct} color="#16A34A" />
+              <div className="row between sm"><span className="muted">{monthLabel(monthKey())}</span><span>{s.approved} aprobado{s.approved === 1 ? '' : 's'} de {s.total} anuncio{s.total === 1 ? '' : 's'}</span></div>
               <div className="row gap-s wrap">
                 {pending > 0 && <Badge color="#D97706">{pending} esperando aprobación</Badge>}
                 {changes > 0 && <Badge color="#DC2626">{changes} con cambios</Badge>}

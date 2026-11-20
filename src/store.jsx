@@ -97,12 +97,12 @@ export function monthSummary(db, client, mk) {
   const ads = db.deliverables.filter((d) => d.clientId === client.id && d.month === mk && d.type === 'creatividad')
   const approved = ads.filter((d) => d.status === 'aprobado').length
   const waiting = ads.filter((d) => d.status === 'aprobacion').length
-  const included = Number(client.adsPerMonth) || 0
-  const pending = Math.max(0, included - approved - waiting)
+  const changes = ads.filter((d) => d.status === 'cambios').length
+  const total = ads.length
   const report = db.reports.find((r) => r.clientId === client.id && r.month === mk && r.published)
   const tasks = db.tasks.filter((t) => t.clientId === client.id && t.month === mk)
   const done = tasks.filter((t) => t.status === 'completada').length
-  return { included, approved, waiting, pending, report, tasks: tasks.length, done, pct: included ? Math.round((approved / included) * 100) : 0 }
+  return { total, approved, waiting, changes, report, tasks: tasks.length, done, pct: total ? Math.round((approved / total) * 100) : 0 }
 }
 
 /* ---------------- Contexto (Firebase) ---------------- */
@@ -312,7 +312,6 @@ function buildActions(mutate, getUser, getDb) {
         if (c.id) { Object.assign(db.clients.find((x) => x.id === c.id), c); return c.id }
         const nc = { ...c, id: uid(), createdAt: now(), status: c.status || 'activo' }
         db.clients.push(nc)
-        db.projects.push({ id: uid(), clientId: nc.id, name: `MetaFlash — ${nc.name}`, ownerId: me(), status: 'activo', start: new Date().toISOString().slice(0, 10), end: '' })
         return nc.id
       })
       if (!login?.email) return null
@@ -336,6 +335,12 @@ function buildActions(mutate, getUser, getDb) {
       })
     },
     /* Proyectos */
+    deleteProject(id) {
+      mutate((db) => {
+        db.projects = db.projects.filter((p) => p.id !== id)
+        for (const k of ['tasks', 'deliverables', 'files']) db[k].forEach((x) => { if (x.projectId === id) x.projectId = null })
+      })
+    },
     saveProject(p) {
       mutate((db) => {
         if (p.id) Object.assign(db.projects.find((x) => x.id === p.id), p)

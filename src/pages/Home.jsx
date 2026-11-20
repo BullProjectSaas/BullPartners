@@ -32,14 +32,14 @@ export function AdminHome() {
       </div>
       <Card title={`Producción de ${monthLabel(mk)}`} className="mt">
         <div className="table">
-          <div className="tr th"><span>Cliente</span><span>Anuncios</span><span className="hide-m">Aprob.</span><span className="hide-m">Esperando</span><span className="hide-m">Pend.</span><span>Reporte</span></div>
+          <div className="tr th"><span>Cliente</span><span>Anuncios</span><span className="hide-m">Aprob.</span><span className="hide-m">Esperando</span><span className="hide-m">Cambios</span><span>Reporte</span></div>
           {view.clients.map((c) => {
             const s = monthSummary(view, c, mk)
             return (
               <div key={c.id} className="tr" onClick={() => go(`#/clients/${c.id}`)}>
                 <span><b>{c.name}</b></span>
-                <span className="row gap-s"><Progress value={s.pct} color="#16A34A" /><small>{s.approved}/{s.included}</small></span>
-                <span className="hide-m">{s.approved}</span><span className="hide-m">{s.waiting}</span><span className="hide-m">{s.pending}</span>
+                <span>{s.total}</span>
+                <span className="hide-m">{s.approved}</span><span className="hide-m">{s.waiting}</span><span className="hide-m">{s.changes}</span>
                 <span>{s.report ? <Badge color="#16A34A">Publicado</Badge> : <Badge color="#64748B">Pendiente</Badge>}</span>
               </div>
             )
