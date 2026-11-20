@@ -5,23 +5,19 @@ service cloud.firestore {
     function path(c, id) { return /databases/$(database)/documents/$(c)/$(id); }
     // Dueño: acceso total por email, aunque su perfil no exista o cambie su ID.
     function owner() { return signed() && request.auth.token.email in ['leonellallanapersonal@gmail.com']; }
-    function hasProfile() { return signed() && exists(path('users', request.auth.uid)); }
-    function me() { return get(path('users', request.auth.uid)).data; }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function hasProfile() { return signed() && request.auth.token.email != null && exists(path('users', myEmail())); }
+    function me() { return get(path('users', myEmail())).data; }
     function staff() { return owner() || (hasProfile() && me().role in ['admin', 'team']); }
     function admin() { return owner() || (hasProfile() && me().role == 'admin'); }
     function clientOf(cid) { return !owner() && hasProfile() && me().role == 'client' && me().clientId == cid; }
     function mine() { return clientOf(resource.data.clientId); }
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
 
-    // Configuración inicial: se puede crear UNA sola vez, junto con el primer admin.
-    match /meta/setup {
-      allow read: if signed();
-      allow create: if signed() && getAfter(path('users', request.auth.uid)).data.role == 'admin';
-    }
-    match /users/{uid} {
-      allow read: if staff() || (signed() && request.auth.uid == uid) || (hasProfile() && resource.data.role in ['admin', 'team']);
-      allow create: if admin() || (owner() && request.auth.uid == uid && request.resource.data.role == 'admin') || (signed() && request.auth.uid == uid && request.resource.data.role == 'admin'
-                      && !exists(path('meta', 'setup')) && existsAfter(path('meta', 'setup')));
+    // Perfiles: el ID del documento es el email (en minúsculas).
+    match /users/{email} {
+      allow read: if staff() || (signed() && myEmail() == email) || (hasProfile() && resource.data.role in ['admin', 'team']);
+      allow create: if admin() || (owner() && myEmail() == email && request.resource.data.role == 'admin');
       allow update, delete: if admin();
     }
     match /clients/{cid} {
@@ -58,13 +54,13 @@ service cloud.firestore {
     }
     match /comments/{id} {
       allow read: if staff() || (mine() && resource.data.internal == false);
-      allow create: if staff() || (clientOf(request.resource.data.clientId) && request.resource.data.internal == false && request.resource.data.by == request.auth.uid);
+      allow create: if staff() || (clientOf(request.resource.data.clientId) && request.resource.data.internal == false && request.resource.data.by == myEmail());
       allow update, delete: if staff();
     }
     match /notifications/{id} {
-      allow read: if signed() && resource.data.userId == request.auth.uid;
+      allow read: if signed() && resource.data.userId == myEmail();
       allow create: if staff() || hasProfile();
-      allow update: if signed() && resource.data.userId == request.auth.uid && onlyChanges(['read']);
+      allow update: if signed() && resource.data.userId == myEmail() && onlyChanges(['read']);
       allow delete: if admin();
     }
   }

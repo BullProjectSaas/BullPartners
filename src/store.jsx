@@ -133,14 +133,15 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!authUser) return
     setProfile(undefined)
-    return onSnapshot(doc(fs, 'users', authUser.uid), { includeMetadataChanges: true }, (s) => {
+    const key = (authUser.email || '').toLowerCase()
+    return onSnapshot(doc(fs, 'users', key), { includeMetadataChanges: true }, (s) => {
       setProfileError('')
-      const isOwner = OWNERS.includes((authUser.email || '').toLowerCase())
+      const isOwner = OWNERS.includes(key)
       if (!s.exists() && isOwner) {
         // Dueño sin perfil: entra igual como admin y se le recrea el perfil en segundo plano.
-        const own = { id: authUser.uid, name: 'Leonel', email: authUser.email, role: 'admin' }
+        const own = { id: key, name: 'Leonel', email: key, role: 'admin' }
         setProfile((prev) => (prev?.id === own.id ? prev : own))
-        if (!s.metadata.fromCache) setDoc(doc(fs, 'users', authUser.uid), own).catch(() => {})
+        if (!s.metadata.fromCache) setDoc(doc(fs, 'users', key), own).catch(() => {})
         return
       }
       if (s.metadata.hasPendingWrites) return
@@ -213,6 +214,25 @@ export function StoreProvider({ children }) {
 
   const actions = useMemo(() => buildActions(mutate, () => user, () => dbRef.current), [mutate, user])
 
+  // Migración: perfiles viejos guardados por ID interno pasan a guardarse por email.
+  const migrated = useRef(new Set())
+  useEffect(() => {
+    if (profile?.role !== 'admin') return
+    const legacy = db.users.filter((u) => u.email && u.id !== u.email.toLowerCase() && !migrated.current.has(u.id))
+    if (!legacy.length) return
+    legacy.forEach((u) => migrated.current.add(u.id))
+    mutate((d) => {
+      for (const u of legacy) {
+        const nid = u.email.toLowerCase()
+        d.users = d.users.filter((x) => x.id !== u.id && x.id !== nid)
+        d.users.push({ ...u, id: nid, email: nid })
+        d.tasks.forEach((t) => { if (t.assigneeId === u.id) t.assigneeId = nid })
+        d.projects.forEach((p) => { if (p.ownerId === u.id) p.ownerId = nid })
+      }
+    })
+  }, [db.users, profile?.role]) // eslint-disable-line
+
+
   const login = async (email, password) => {
     try { await signInWithEmailAndPassword(auth, email.trim(), password); return null } catch (e) { return authError(e) }
   }
@@ -248,11 +268,24 @@ export function authError(e) {
 }
 
 /* Crea una cuenta de acceso (Auth + perfil) sin cerrar la sesión actual. */
+/* El perfil se guarda por email: si el email ya tenía cuenta (ej. un cliente borrado),
+   se reutiliza y se le manda un email para que elija su contraseña. */
 export async function createAccount({ name, email, password, role, clientId }) {
-  const cred = await createUserWithEmailAndPassword(auth2, email.trim(), password)
-  await setDoc(doc(fs, 'users', cred.user.uid), clean({ id: cred.user.uid, name, email: email.trim(), role, clientId }))
-  await signOut(auth2)
-  return cred.user.uid
+  const key = email.trim().toLowerCase()
+  let existed = false
+  try {
+    await createUserWithEmailAndPassword(auth2, key, password)
+    await signOut(auth2)
+  } catch (e) {
+    if (e.code !== 'auth/email-already-in-use') throw e
+    existed = true
+  }
+  await setDoc(doc(fs, 'users', key), clean({ id: key, name, email: key, role, clientId }))
+  if (existed) {
+    await sendPasswordResetEmail(auth, key).catch(() => {})
+    alert(`${key} ya tenía una cuenta de antes, así que la contraseña que pusiste no se aplicó. Le enviamos un email para que elija una nueva.`)
+  }
+  return key
 }
 export const sendReset = (email) => sendPasswordResetEmail(auth, email)
 
