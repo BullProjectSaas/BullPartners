@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth, connectAuthEmulator } from 'firebase/auth'
+import { initializeAuth, connectAuthEmulator, indexedDBLocalPersistence, browserLocalPersistence, inMemoryPersistence } from 'firebase/auth'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 
 // Config pública del SDK web (no es secreta: la seguridad la dan las reglas de Firestore).
@@ -13,10 +13,11 @@ export const firebaseConfig = {
 }
 
 export const app = initializeApp(firebaseConfig)
-export const auth = getAuth(app)
+// Sesión recordada en el dispositivo hasta que la persona toque "Salir".
+export const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] })
 export const fs = getFirestore(app)
 // App secundaria: crea usuarios nuevos sin cerrar la sesión del admin.
-export const auth2 = getAuth(initializeApp(firebaseConfig, 'secondary'))
+export const auth2 = initializeAuth(initializeApp(firebaseConfig, 'secondary'), { persistence: inMemoryPersistence })
 
 // Solo para pruebas locales (npm run dev con VITE_EMULATOR=1)
 if (import.meta.env.VITE_EMULATOR) {
