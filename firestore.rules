@@ -9,6 +9,8 @@ service cloud.firestore {
     function admin() { return hasProfile() && me().role == 'admin'; }
     function clientOf(cid) { return hasProfile() && me().role == 'client' && me().clientId == cid; }
     function mine() { return clientOf(resource.data.clientId); }
+    // Dueños: si pierden su perfil, la app se los vuelve a crear como admin.
+    function owner() { return signed() && request.auth.token.email in ['leonellallanapersonal@gmail.com']; }
     function onlyChanges(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
 
     // Configuración inicial: se puede crear UNA sola vez, junto con el primer admin.
@@ -18,7 +20,7 @@ service cloud.firestore {
     }
     match /users/{uid} {
       allow read: if staff() || (signed() && request.auth.uid == uid) || (hasProfile() && resource.data.role in ['admin', 'team']);
-      allow create: if admin() || (signed() && request.auth.uid == uid && request.resource.data.role == 'admin'
+      allow create: if admin() || (owner() && request.auth.uid == uid && request.resource.data.role == 'admin') || (signed() && request.auth.uid == uid && request.resource.data.role == 'admin'
                       && !exists(path('meta', 'setup')) && existsAfter(path('meta', 'setup')));
       allow update, delete: if admin();
     }

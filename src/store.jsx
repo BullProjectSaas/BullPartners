@@ -108,6 +108,7 @@ export function monthSummary(db, client, mk) {
 /* ---------------- Contexto (Firebase) ---------------- */
 const Ctx = createContext(null)
 export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users']
+export const OWNERS = ['leonellallanapersonal@gmail.com']
 const empty = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]))
 const clean = (o) => JSON.parse(JSON.stringify(o)) // quita undefined (Firestore no los acepta)
 /* Tolera perfiles cargados a mano: "Role ", " admin", sin nombre, etc. */
@@ -132,7 +133,16 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!authUser) return
     setProfile(undefined)
-    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => { setProfileError(''); setProfile(s.exists() ? normUser(s.data(), s.id) : null) }, (e) => { setProfileError(e.code || e.message); setProfile(null) })
+    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => {
+      setProfileError('')
+      if (!s.exists() && OWNERS.includes((authUser.email || '').toLowerCase())) {
+        // Dueño sin perfil: se recrea solo como administrador.
+        setDoc(doc(fs, 'users', authUser.uid), { id: authUser.uid, name: 'Leonel', email: authUser.email, role: 'admin' })
+          .catch((e) => { setProfileError('No se pudo crear el perfil: ' + (e.code || e.message)); setProfile(null) })
+        return
+      }
+      setProfile(s.exists() ? normUser(s.data(), s.id) : null)
+    }, (e) => { setProfileError(e.code || e.message); setProfile(null) })
   }, [authUser])
 
   // Suscripciones en tiempo real según el rol
