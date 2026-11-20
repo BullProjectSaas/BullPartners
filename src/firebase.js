@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
-import { getFirestore } from 'firebase/firestore'
+import { getAuth, connectAuthEmulator } from 'firebase/auth'
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 
 // Config pública del SDK web (no es secreta: la seguridad la dan las reglas de Firestore).
 export const firebaseConfig = {
@@ -17,3 +17,10 @@ export const auth = getAuth(app)
 export const fs = getFirestore(app)
 // App secundaria: crea usuarios nuevos sin cerrar la sesión del admin.
 export const auth2 = getAuth(initializeApp(firebaseConfig, 'secondary'))
+
+// Solo para pruebas locales (npm run dev con VITE_EMULATOR=1)
+if (import.meta.env.VITE_EMULATOR) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true })
+  connectAuthEmulator(auth2, 'http://127.0.0.1:9099', { disableWarnings: true })
+  connectFirestoreEmulator(fs, '127.0.0.1', 8080)
+}

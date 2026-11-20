@@ -133,15 +133,17 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     if (!authUser) return
     setProfile(undefined)
-    return onSnapshot(doc(fs, 'users', authUser.uid), (s) => {
+    return onSnapshot(doc(fs, 'users', authUser.uid), { includeMetadataChanges: true }, (s) => {
       setProfileError('')
-      if (!s.exists() && OWNERS.includes((authUser.email || '').toLowerCase())) {
+      if (!s.exists() && !s.metadata.fromCache && OWNERS.includes((authUser.email || '').toLowerCase())) {
         // Dueño sin perfil: se recrea solo como administrador.
         setDoc(doc(fs, 'users', authUser.uid), { id: authUser.uid, name: 'Leonel', email: authUser.email, role: 'admin' })
           .catch((e) => { setProfileError('No se pudo crear el perfil: ' + (e.code || e.message)); setProfile(null) })
         return
       }
-      setProfile(s.exists() ? normUser(s.data(), s.id) : null)
+      if (s.metadata.hasPendingWrites) return // esperar confirmación del servidor antes de suscribirse
+      const n = s.exists() ? normUser(s.data(), s.id) : null
+      setProfile((prev) => (JSON.stringify(prev) === JSON.stringify(n) ? prev : n))
     }, (e) => { setProfileError(e.code || e.message); setProfile(null) })
   }, [authUser])
 
