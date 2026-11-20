@@ -148,7 +148,7 @@ export function StoreProvider({ children }) {
       Object.values(parts[key]).flat().forEach((x) => merged.set(x.id, x))
       setDb((prev) => ({ ...prev, [key]: [...merged.values()] }))
     }
-    const sub = (key, q, part = 'all') => onSnapshot(q, (snap) => put(key, part, snap.docs.map((d) => (key === 'users' ? normUser(d.data(), d.id) : { ...d.data(), id: d.id })))), (e) => console.error(key, e))
+    const sub = (key, q, part = 'all') => onSnapshot(q, (snap) => put(key, part, snap.docs.map((d) => (key === 'users' ? normUser(d.data(), d.id) : { ...d.data(), id: d.id }))), (e) => console.error(key, e))
     const C = (k) => collection(fs, k)
     let unsubs
     if (staff) {
