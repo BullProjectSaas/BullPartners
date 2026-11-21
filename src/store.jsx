@@ -11,6 +11,16 @@ import { auth, auth2, fs } from './firebase.js'
    ============================================================ */
 
 
+/* Conexión con la planilla de leads del cliente (Apps Script publicado como aplicación web). */
+export async function sheetApi(client, params) {
+  if (!client?.salesUrl) throw new Error('Este cliente todavía no tiene conectada su planilla de leads.')
+  const qs = new URLSearchParams({ ...params, key: client.salesKey || '' })
+  let res
+  try { res = await fetch(`${client.salesUrl}?${qs}`) } catch { throw new Error('No se pudo conectar con la planilla. Revisá la URL de la aplicación web.') }
+  const data = await res.json().catch(() => ({ error: 'La planilla respondió algo inesperado. ¿La aplicación web está publicada para "Cualquier usuario"?' }))
+  if (data.error) throw new Error(data.error)
+  return data
+}
 export const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 export const now = () => new Date().toISOString()
@@ -83,7 +93,6 @@ function filterBy(db, ids, isClient, user) {
     files: db.files.filter((f) => inC(f) && (!isClient || f.shared)),
     comments: db.comments.filter((c) => inC(c) && (!isClient || !c.internal)),
     news: db.news.filter(inC),
-    leads: db.leads.filter(inC),
     notifications: db.notifications.filter((n) => n.userId === user.id),
     users: db.users,
   }
@@ -109,7 +118,7 @@ export function monthSummary(db, client, mk) {
 
 /* ---------------- Contexto (Firebase) ---------------- */
 const Ctx = createContext(null)
-export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users', 'leads']
+export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users']
 export const OWNERS = ['leonellallanapersonal@gmail.com']
 const empty = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]))
 const clean = (o) => JSON.parse(JSON.stringify(o)) // quita undefined (Firestore no los acepta)
@@ -177,7 +186,6 @@ export function StoreProvider({ children }) {
         onSnapshot(doc(fs, 'clients', cid), (s) => put('clients', 'all', s.exists() ? [{ ...s.data(), id: s.id }] : [])),
         sub('projects', query(C('projects'), where('clientId', '==', cid))),
         sub('news', query(C('news'), where('clientId', '==', cid))),
-        sub('leads', query(C('leads'), where('clientId', '==', cid))),
         sub('tasks', query(C('tasks'), where('clientId', '==', cid), where('visibleToClient', '==', true))),
         sub('deliverables', query(C('deliverables'), where('clientId', '==', cid), where('status', 'in', ['aprobacion', 'cambios', 'aprobado']))),
         sub('reports', query(C('reports'), where('clientId', '==', cid), where('published', '==', true))),
@@ -493,20 +501,9 @@ function buildActions(mutate, getUser, getDb) {
       })
     },
     deleteNews(id) { mutate((db) => { db.news = db.news.filter((n) => n.id !== id) }) },
-    /* Ventas: el cliente marca un lead como vendido. El script de Google envía la compra a Meta (CAPI). */
-    markSold(leadId, amount) {
-      mutate((db) => {
-        const l = db.leads.find((x) => x.id === leadId)
-        if (!l) return
-        Object.assign(l, { sold: true, amount: Number(amount) || 0, soldAt: now(), soldBy: me(), capiSent: false })
-        notify(db, staffFor(db, l.clientId), `${getUser()?.name} registró una venta: ${l.name || l.ref} (${fmtMoney(l.amount)})`, `#/sales?ref=${l.ref}`)
-      })
-    },
-    unmarkSold(leadId) {
-      mutate((db) => {
-        const l = db.leads.find((x) => x.id === leadId)
-        if (l) Object.assign(l, { sold: false, amount: 0, soldAt: null, soldBy: null })
-      })
+    /* Ventas: la planilla es la fuente; acá solo se avisa al equipo. */
+    notifySale(clientId, lead) {
+      mutate((db) => { notify(db, staffFor(db, clientId), `${getUser()?.name} registró una venta: ${lead.name || lead.ref} (${fmtMoney(lead.amount)})`, `#/sales?ref=${lead.ref}`) })
     },
     /* Notificaciones */
     readNotification(id) { mutate((db) => { const n = db.notifications.find((x) => x.id === id); if (n) n.read = true }) },

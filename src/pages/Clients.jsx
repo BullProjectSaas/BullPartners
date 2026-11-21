@@ -9,7 +9,7 @@ import FilesPage from './Files.jsx'
 export function ClientModal({ client, onClose }) {
   const { actions, view } = useStore()
   const login = client && view.users.find((u) => u.role === 'client' && u.clientId === client.id)
-  const [f, setF] = useState(client ? { ...client } : { name: '', contact: '', email: '', status: 'activo' })
+  const [f, setF] = useState(() => ({ salesKey: Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10), ...(client || { name: '', contact: '', email: '', status: 'activo' }) }))
   const [acc, setAcc] = useState({ name: login?.name || '', email: login?.email || '', password: '' })
   const [busy, setBusy] = useState(false)
   const save = async () => {
@@ -30,6 +30,13 @@ export function ClientModal({ client, onClose }) {
         <Field label="Contacto"><input value={f.contact} onChange={(e) => setF({ ...f, contact: e.target.value })} /></Field>
       </div>
       <Field label="Estado del servicio"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="activo">Activo</option><option value="pausado">Pausado</option><option value="finalizado">Finalizado</option></select></Field>
+      <h4>Planilla de leads (ventas)</h4>
+      <Field label="URL de la aplicación web" hint="Apps Script de la planilla → Implementar → Aplicación web. Ver integraciones/metaflash-ventas.gs">
+        <input value={f.salesUrl || ''} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setF({ ...f, salesUrl: e.target.value.trim() })} />
+      </Field>
+      <Field label="Clave (pegala en el script, en KEY)">
+        <div className="row gap-s"><input readOnly value={f.salesKey} className="code" /><button type="button" className="btn sm" onClick={() => { navigator.clipboard?.writeText(f.salesKey); alert('Clave copiada') }}>Copiar</button></div>
+      </Field>
       <h4>Acceso al portal del cliente</h4>
       <div className="grid2">
         <Field label="Email de acceso"><input type="email" disabled={!!login} value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} /></Field>
@@ -142,7 +149,7 @@ export function ClientDetail({ id }) {
       <div className="page-h">
         <div className="row gap"><span className="logo-c">{client.name[0]}</span><div><h1>{client.name}</h1><p className="muted">{client.contact && <>{client.contact} · </>}<Badge color={PROJECT_STATUS[client.status]?.color || '#16A34A'}>{PROJECT_STATUS[client.status]?.label || 'Activo'}</Badge></p></div></div>
         {user.role === 'admin' && <div className="row gap-s wrap">
-          <button className="btn ghost sm" title="Se usa en el script de la planilla de leads" onClick={() => { navigator.clipboard?.writeText(client.id); alert('ID copiado: ' + client.id) }}>🔗 ID para planilla: <span className="code">{client.id}</span></button>
+          {!client.salesUrl && <button className="btn ghost sm" onClick={() => setEditing(true)}>🔗 Conectar planilla de leads</button>}
           <button className="btn" onClick={() => setEditing(true)}>Editar cliente</button>
         </div>}
       </div>
