@@ -19,8 +19,16 @@ function LeadCard({ lead, client, onChange }) {
       const r = await sheetApi(client, { action: 'sell', ref: lead.ref, amount })
       onChange(r.lead)
       actions.notifySale(client.id, r.lead)
-      setMsg(r.meta?.sent ? 'Venta registrada y enviada a Meta ✓' : r.meta?.skipped ? 'Venta actualizada.' : `Venta registrada en la planilla. ${staff ? 'Meta no la recibió: ' + (r.meta?.error || '') : ''}`)
+      setMsg(r.meta?.sent ? 'Venta registrada y enviada a Meta ✓' : r.meta?.skipped ? 'Venta actualizada.' : staff ? 'Venta registrada en la planilla. Meta rechazó el envío: ' + (r.meta?.error || 'sin detalle') : 'Venta registrada ✓')
     } catch (err) { alert(err.message) }
+    setBusy(false)
+  }
+  const resend = async () => {
+    setBusy(true)
+    try {
+      const r = await sheetApi(client, { action: 'capi', ref: lead.ref })
+      setMsg(r.meta?.sent ? 'Compra enviada a Meta ✓' : 'Meta rechazó el envío: ' + (r.meta?.error || 'sin detalle'))
+    } catch (err) { setMsg('Error: ' + err.message) }
     setBusy(false)
   }
   const undo = async () => {
@@ -43,7 +51,10 @@ function LeadCard({ lead, client, onChange }) {
       {lead.sold ? (
         <div className="callout ok mt-s row between wrap gap">
           <span>{msg || `Venta registrada por ${fmtMoney(lead.amount)}.`}</span>
-          <button className="link" disabled={busy} onClick={undo}>Deshacer</button>
+          <span className="row gap">
+            {staff && <button className="link" disabled={busy} onClick={resend}>Enviar a Meta</button>}
+            <button className="link" disabled={busy} onClick={undo}>Deshacer</button>
+          </span>
         </div>
       ) : (
         <form className="sell-form" onSubmit={sell}>

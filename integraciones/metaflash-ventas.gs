@@ -30,6 +30,7 @@ function doGet(e) {
     if (p.action === 'sell') return mfOut_(mfVender_(p.ref, p.amount))
     if (p.action === 'unsell') return mfOut_(mfDeshacer_(p.ref))
     if (p.action === 'summary') return mfOut_(mfResumen_(p.month))
+    if (p.action === 'capi') return mfOut_(mfReenviar_(p.ref))
     return mfOut_({ error: 'Acción desconocida' })
   } catch (err) {
     return mfOut_({ error: String(err && err.message || err) })
@@ -88,7 +89,7 @@ function mfLead_(t, row) {
   var data = {}
   t.headers.forEach(function (h, i) {
     var k = String(h).trim()
-    if (k && row[i] !== '' && row[i] != null && !/utm|fbclid|fbc|fbp|p[aá]gina|agent|^venta$|^monto|^ref|^fecha|^nombre/i.test(k)) data[k] = get(i)
+    if (k && row[i] !== '' && row[i] != null && !/utm|fbclid|fbc|fbp|p[aá]gina|agent|^venta$|^monto|^ref|^fecha|^nombre|^meta$/i.test(k)) data[k] = get(i)
   })
   return {
     ref: get(c.ref), name: get(c.name), date: mfFecha_(c.date >= 0 ? row[c.date] : ''),
@@ -126,10 +127,36 @@ function mfVender_(ref, amount) {
     t.sh.getRange(r + 1, t.c.amount + 1).setValue(value)
     lead.sold = true; lead.amount = value
     var meta = yaVendido ? { skipped: true } : mfPurchase_(t, t.values[r], lead)
+    if (!yaVendido) mfEstadoMeta_(t, r, meta)
     return { lead: lead, meta: meta }
   } finally {
     lock.releaseLock()
   }
+}
+
+/* Reenvía la compra a Meta (desde la app, para el equipo) y devuelve el resultado exacto. */
+function mfReenviar_(ref) {
+  var t = mfLeer_()
+  var r = mfFila_(t, ref)
+  if (r < 0) return { error: 'No encontré ese código en la planilla.' }
+  var lead = mfLead_(t, t.values[r])
+  if (!lead.sold) return { error: 'Ese lead no está marcado como vendido.' }
+  var meta = mfPurchase_(t, t.values[r], lead)
+  mfEstadoMeta_(t, r, meta)
+  return { lead: lead, meta: meta }
+}
+
+/* Escribe el resultado del envío en la columna "Meta" de la planilla (la crea si no existe). */
+function mfEstadoMeta_(t, r, meta) {
+  var col = -1
+  for (var i = 0; i < t.headers.length; i++) if (String(t.headers[i]).trim() === 'Meta') col = i
+  if (col < 0) {
+    col = t.sh.getLastColumn()
+    t.sh.getRange(1, col + 1).setValue('Meta').setFontWeight('bold')
+    t.headers.push('Meta')
+  }
+  var txt = meta.sent ? '✓ Enviado ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM HH:mm') : '✗ ' + (meta.error || 'Error')
+  t.sh.getRange(r + 1, col + 1).setValue(txt)
 }
 
 function mfDeshacer_(ref) {
@@ -170,6 +197,7 @@ function mfSha_(v) {
 
 function mfPurchase_(t, row, lead) {
   if (!MF.PIXEL_ID || MF.PIXEL_ID === 'PEGAR_PIXEL_ID') return { sent: false, error: 'Falta configurar el píxel' }
+  if (!MF.CAPI_TOKEN || MF.CAPI_TOKEN === 'PEGAR_TOKEN_CAPI') return { sent: false, error: 'Falta configurar el token de CAPI' }
   var c = t.c
   var cell = function (i) { return i >= 0 && row[i] != null ? String(row[i]).trim() : '' }
   var user = {}
@@ -192,12 +220,22 @@ function mfPurchase_(t, row, lead) {
     custom_data: { value: lead.amount, currency: MF.CURRENCY, content_name: lead.ad || '' },
   }
   if (ua) { user.client_user_agent = ua; event.event_source_url = cell(c.page) || 'https://sociosdetoros.com' }
-  var resp = UrlFetchApp.fetch('https://graph.facebook.com/v21.0/' + MF.PIXEL_ID + '/events?access_token=' + encodeURIComponent(MF.CAPI_TOKEN), {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ data: [event] }),
-  })
+  var resp
+  try {
+    resp = UrlFetchApp.fetch('https://graph.facebook.com/v21.0/' + MF.PIXEL_ID + '/events?access_token=' + encodeURIComponent(String(MF.CAPI_TOKEN).trim()), {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify({ data: [event] }),
+    })
+  } catch (err) {
+    return { sent: false, error: 'No se pudo conectar con Meta: ' + (err && err.message || err) }
+  }
   var ok = resp.getResponseCode() === 200
-  if (!ok) Logger.log('Meta rechazó la venta ' + lead.ref + ': ' + resp.getContentText())
-  return { sent: ok, error: ok ? null : resp.getContentText().slice(0, 300) }
+  var body = resp.getContentText()
+  var msg = null
+  if (!ok) {
+    try { var e = JSON.parse(body).error; msg = (e.error_user_msg || e.message) + ' (código ' + e.code + (e.error_subcode ? '/' + e.error_subcode : '') + ')' } catch (x) { msg = body.slice(0, 300) }
+    console.log('Meta rechazó la venta ' + lead.ref + ': ' + body)
+  }
+  return { sent: ok, error: msg, response: ok ? body.slice(0, 200) : null }
 }
 
 /* Para probar desde el editor: elegí esta función y tocá Ejecutar. */
