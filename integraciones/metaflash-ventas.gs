@@ -196,8 +196,8 @@ function mfSha_(v) {
 }
 
 function mfPurchase_(t, row, lead) {
-  if (!MF.PIXEL_ID || MF.PIXEL_ID === 'PEGAR_PIXEL_ID') return { sent: false, error: 'Falta configurar el píxel' }
-  if (!MF.CAPI_TOKEN || MF.CAPI_TOKEN === 'PEGAR_TOKEN_CAPI') return { sent: false, error: 'Falta configurar el token de CAPI' }
+  if (!/^\d+$/.test(String(MF.PIXEL_ID).trim())) return { sent: false, error: 'Falta configurar el píxel' }
+  if (!/^EAA/.test(String(MF.CAPI_TOKEN).trim())) return { sent: false, error: 'Falta configurar el token de CAPI' }
   var c = t.c
   var cell = function (i) { return i >= 0 && row[i] != null ? String(row[i]).trim() : '' }
   var user = {}
