@@ -67,7 +67,7 @@ function LeadCard({ lead, client, onChange }) {
 }
 
 export default function SalesPage() {
-  const { view, user } = useStore()
+  const { view, user, actions } = useStore()
   const { query } = useRoute()
   const staff = user.role !== 'client'
   const [cid, setCid] = useState(() => (staff ? (view.clients.find((c) => c.salesUrl) || view.clients[0])?.id : user.clientId))
@@ -109,7 +109,15 @@ export default function SalesPage() {
   let list = sum?.leads || []
   if (filter === 'sold') list = list.filter((l) => l.sold)
   if (filter === 'open') list = list.filter((l) => !l.sold)
-  const t = sum?.total
+  const excluded = new Set(client?.excludedCampaigns || [])
+  const isOn = (name) => !excluded.has(name || '')
+  const t = sum && (excluded.size ? recalcTotal(sum, isOn) : sum.total)
+  const shownCampaigns = (sum?.campaigns || []).filter((r) => staff || isOn(r.campaign))
+  const toggleCamp = (name) => {
+    const next = new Set(excluded)
+    next.has(name || '') ? next.delete(name || '') : next.add(name || '')
+    actions.setExcludedCampaigns(client.id, [...next])
+  }
 
   return (
     <div>
@@ -149,11 +157,13 @@ export default function SalesPage() {
           <button className={tab === 'ads' ? 'on' : ''} onClick={() => setTab('ads')}>Por anuncio</button>
         </div>} action={tab === 'ads' && camp != null && <button className="chip" onClick={() => setCamp(null)}>{camp || 'Sin campaña'} ✕</button>}>
           {!sum ? <p className="muted sm">Cargando…</p> : tab === 'campaigns' ? (
-            sum.campaigns?.length ? (
-              <div className="rtable">
-                <div className="rt-h"><span>Campaña</span>{sum.hasSpend && <span>Inversión</span>}<span>Leads</span><span>Ventas</span><span>Cierre</span><span>Facturación</span>{sum.hasSpend && <span>ROAS</span>}<span>Días a venta</span></div>
-                {sum.campaigns.map((r) => (
-                  <div key={r.campaign} className="rt-r click" onClick={() => { setCamp(r.campaign || ''); setTab('ads') }} title="Ver anuncios de esta campaña">
+            shownCampaigns.length ? (
+              <div className={'rtable' + (staff ? ' with-check' : '')}>
+                {staff && <p className="muted sm mb">Destildá las campañas que no querés que cuenten en las métricas (el cliente no las ve).</p>}
+                <div className="rt-h">{staff && <span title="Cuenta en las métricas">✓</span>}<span>Campaña</span>{sum.hasSpend && <span>Inversión</span>}<span>Leads</span><span>Ventas</span><span>Cierre</span><span>Facturación</span>{sum.hasSpend && <span>ROAS</span>}<span>Días a venta</span></div>
+                {shownCampaigns.map((r) => (
+                  <div key={r.campaign} className={'rt-r click' + (isOn(r.campaign) ? '' : ' off')} onClick={() => { setCamp(r.campaign || ''); setTab('ads') }} title="Ver anuncios de esta campaña">
+                    {staff && <span onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={isOn(r.campaign)} onChange={() => toggleCamp(r.campaign)} title="Cuenta en las métricas" /></span>}
                     <span className="ellipsis"><b>{r.campaign || 'Sin campaña (orgánico o directo)'}</b></span>
                     {sum.hasSpend && <span>{r.spend != null ? fmtMoney(r.spend) : '—'}</span>}
                     <span>{r.leads}</span><span>{r.sales}</span><span>{fmtPct(r.closeRate)}</span><span>{fmtMoney(r.revenue)}</span>
@@ -166,7 +176,7 @@ export default function SalesPage() {
           ) : (
             <div className="rtable">
               <div className="rt-h"><span>Anuncio</span>{sum.hasSpend && <span>Inversión</span>}<span>Leads</span><span>Ventas</span><span>Cierre</span><span>Facturación</span>{sum.hasSpend && <span>ROAS</span>}<span>Días a venta</span></div>
-              {(sum.ads || []).filter((r) => camp == null || (r.campaign || '') === camp).map((r) => (
+              {(sum.ads || []).filter((r) => (camp == null ? isOn(r.campaign) : (r.campaign || '') === camp) && (staff || isOn(r.campaign))).map((r) => (
                 <div key={(r.campaign || '') + '|' + (r.ad || '')} className="rt-r">
                   <span className="ellipsis" title={r.ad}><b>{r.ad || 'Sin anuncio'}</b>{camp == null && <small className="muted block ellipsis">{r.campaign}</small>}</span>
                   {sum.hasSpend && <span>{r.spend != null ? fmtMoney(r.spend) : '—'}</span>}
@@ -201,3 +211,19 @@ export default function SalesPage() {
 const fmtPct = (v) => (v == null ? '—' : Math.round(v * 100) + '%')
 const fmtRoas = (v) => (v == null ? '—' : v.toFixed(1).replace('.', ',') + 'x')
 const fmtDays = (v) => (v == null ? '—' : v < 1 ? 'mismo día' : Math.round(v) + (Math.round(v) === 1 ? ' día' : ' días'))
+
+function recalcTotal(sum, isOn) {
+  const t = { leads: 0, sales: 0, revenue: 0, spend: sum.hasSpend ? 0 : null }
+  let days = 0, dn = 0
+  for (const c of sum.campaigns.filter((c) => isOn(c.campaign))) {
+    t.leads += c.leads; t.sales += c.sales; t.revenue += c.revenue
+    if (sum.hasSpend) t.spend += c.spend || 0
+    if (c.avgDays != null) { days += c.avgDays * c.sales; dn += c.sales }
+  }
+  t.closeRate = t.leads ? t.sales / t.leads : null
+  t.roas = t.spend ? t.revenue / t.spend : null
+  t.cpl = t.spend != null && t.leads ? t.spend / t.leads : null
+  t.cps = t.spend != null && t.sales ? t.spend / t.sales : null
+  t.avgDays = dn ? days / dn : null
+  return t
+}

@@ -517,6 +517,9 @@ function buildActions(mutate, getUser, getDb) {
     },
     deleteNews(id) { mutate((db) => { db.news = db.news.filter((n) => n.id !== id) }) },
     /* Ventas: la planilla es la fuente; acá solo se avisa al equipo. */
+    setExcludedCampaigns(clientId, list) {
+      mutate((db) => { const c = db.clients.find((x) => x.id === clientId); if (c) c.excludedCampaigns = list })
+    },
     notifySale(clientId, lead) {
       mutate((db) => { notify(db, staffFor(db, clientId), `${getUser()?.name} registró una venta: ${lead.name || lead.ref} (${fmtMoney(lead.amount)})`, `#/sales?ref=${lead.ref}`) })
     },
