@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useStore, sendReset } from '../store.jsx'
+import { useEffect, useState } from 'react'
+import { useStore, sendReset, getIntegration, saveIntegration, adminApi } from '../store.jsx'
 import { Modal, Field, Avatar, Badge } from '../ui.jsx'
 
 function UserModal({ u, onClose }) {
@@ -28,6 +28,33 @@ function UserModal({ u, onClose }) {
   )
 }
 
+function IntegrationCard() {
+  const [v, setV] = useState({ url: '', adminKey: '' })
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { getIntegration().then((d) => setV((p) => (p.url || p.adminKey ? p : d))).catch(() => {}) }, [])
+  const test = async () => {
+    setBusy(true); setMsg('')
+    try {
+      await saveIntegration(v)
+      const r = await adminApi(v, { action: 'test' })
+      setMsg(`✓ Conectado a Meta como "${r.name}" · ${r.accounts} cuentas publicitarias disponibles`)
+    } catch (e) { setMsg('✗ ' + e.message) }
+    setBusy(false)
+  }
+  return (
+    <div className="card mb">
+      <h3>Conexión con Meta y planillas</h3>
+      <p className="muted sm mb">Script central de Google (integraciones/metaflash-central.gs). Se configura una sola vez.</p>
+      <div className="grid2">
+        <label className="field"><span>URL de la aplicación web</span><input value={v.url} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setV({ ...v, url: e.target.value.trim() })} /></label>
+        <label className="field"><span>Clave de administrador (ADMIN_KEY)</span><input type="password" value={v.adminKey} onChange={(e) => setV({ ...v, adminKey: e.target.value.trim() })} /></label>
+      </div>
+      <div className="row gap wrap"><button className="btn primary" disabled={busy || !v.url || !v.adminKey} onClick={test}>{busy ? 'Probando…' : 'Guardar y probar conexión'}</button>{msg && <span className={'sm ' + (msg.startsWith('✓') ? 'pos' : 'neg')}>{msg}</span>}</div>
+    </div>
+  )
+}
+
 export default function TeamPage() {
   const { view, user } = useStore()
   const [edit, setEdit] = useState(null)
@@ -37,6 +64,7 @@ export default function TeamPage() {
   return (
     <div>
       <div className="page-h"><div><h1>Equipo y accesos</h1><p className="muted">Quién puede entrar a MetaFlash.</p></div>{user.role === 'admin' && <button className="btn primary" onClick={() => setEdit({})}>+ Miembro</button>}</div>
+      {user.role === 'admin' && <IntegrationCard />}
       <div className="card flush mb">
         {staff.map((u) => (
           <div key={u.id} className="trow" onClick={() => user.role === 'admin' && setEdit(u)}>

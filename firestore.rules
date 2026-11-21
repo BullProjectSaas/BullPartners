@@ -63,6 +63,10 @@ service cloud.firestore {
       allow create, delete: if staff();
       allow update: if staff() || (mine() && onlyChanges(['sold', 'amount', 'soldAt', 'soldBy', 'capiSent']));
     }
+    // Conexión con el script central (URL + clave de administrador): solo admins.
+    match /meta/integration {
+      allow read, write: if admin();
+    }
     match /notifications/{id} {
       allow read: if signed() && resource.data.userId == myEmail();
       allow create: if staff() || hasProfile();

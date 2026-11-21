@@ -1,33 +1,41 @@
 /**
- * MetaFlash · Conexión con la planilla de leads
+ * MetaFlash · Script central (todas las planillas y cuentas publicitarias)
  * ------------------------------------------------------------------
- * La app NO copia los leads: consulta la planilla en el momento.
- *  - Buscar un lead por su código ref (y de qué anuncio vino).
- *  - Marcar la venta: escribe Venta / Monto en la planilla y envía la compra a Meta (CAPI).
- *  - Resumen del mes por anuncio (leads, ventas, facturación).
+ * Un solo script para todos los clientes. La configuración de cada cliente
+ * (planilla, píxel, cuenta publicitaria) se carga desde la app MetaFlash.
  *
- * Instalación (proyecto NUEVO de Apps Script, no el de la landing):
- *  1. script.new → pegar este archivo → completar MF.
+ * Instalación (una sola vez):
+ *  1. script.new → pegar este archivo → completar ADMIN_KEY y ADS_TOKEN → Cmd+S.
  *  2. Implementar → Nueva implementación → Aplicación web →
  *     Ejecutar como: Yo · Quién tiene acceso: Cualquier usuario → Implementar.
- *  3. Copiar la URL de la aplicación web y pegarla en MetaFlash (Editar cliente → Planilla de leads).
+ *  3. En MetaFlash → Equipo → "Conexión con Meta y planillas": pegar la URL y la ADMIN_KEY.
  */
-var MF = {
-  KEY: 'PEGAR_CLAVE',            // la misma clave que muestra MetaFlash en Editar cliente → Planilla de leads
-  SHEET_ID: '17s0Za78bjPDidNHKtgfRBzCE5X-IgwS0krHuDsT7cx8',
-  SHEET_NAME: 'Leads',
-  PIXEL_ID: 'PEGAR_PIXEL_ID',
-  CAPI_TOKEN: 'PEGAR_TOKEN_CAPI',
-  CURRENCY: 'ARS',
-  // Inversión por anuncio (opcional): cuenta publicitaria y token con permiso ads_read
-  AD_ACCOUNT_ID: 'PEGAR_CUENTA_PUBLICITARIA',   // solo números, sin "act_"
-  ADS_TOKEN: 'PEGAR_TOKEN_ADS',
+var MF_SETTINGS = {
+  ADMIN_KEY: 'PEGAR_CLAVE_ADMIN',   // inventala (larga); la misma va en MetaFlash → Equipo
+  ADS_TOKEN: 'PEGAR_TOKEN_ADS',     // token del usuario del sistema con ads_read
 }
+
+// Se completa en cada pedido con la configuración del cliente.
+var MF = { KEY: '', SHEET_ID: '', SHEET_NAME: 'Leads', PIXEL_ID: '', CAPI_TOKEN: '', CURRENCY: 'ARS', AD_ACCOUNT_ID: '', ADS_TOKEN: MF_SETTINGS.ADS_TOKEN }
 
 function doGet(e) {
   var p = (e && e.parameter) || {}
   try {
-    if (!MF.KEY || MF.KEY === 'PEGAR_CLAVE' || p.key !== MF.KEY) return mfOut_({ error: 'Clave incorrecta. Revisá la conexión de la planilla en MetaFlash.' })
+    var esAdmin = String(MF_SETTINGS.ADMIN_KEY).length >= 8 && !/^PEGAR/.test(MF_SETTINGS.ADMIN_KEY) && p.admin === MF_SETTINGS.ADMIN_KEY
+    // --- Acciones de administración (desde MetaFlash, solo el equipo) ---
+    if (p.admin != null) {
+      if (!esAdmin) return mfOut_({ error: 'Clave de administrador incorrecta.' })
+      if (p.action === 'test') return mfOut_(mfProbarToken_())
+      if (p.action === 'accounts') return mfOut_(mfCuentas_())
+      if (p.action === 'register') return mfOut_(mfRegistrar_(p))
+      if (p.action === 'config') return mfOut_({ config: mfConfigPublica_(mfConfig_(p.client)) })
+      return mfOut_({ error: 'Acción desconocida' })
+    }
+    // --- Acciones del cliente (con la clave de su conexión) ---
+    var cfg = mfConfig_(p.key)
+    if (!cfg) return mfOut_({ error: 'La planilla de este cliente todavía no está conectada.' })
+    MF.SHEET_ID = cfg.sheetId; MF.SHEET_NAME = cfg.sheetName || 'Leads'; MF.PIXEL_ID = cfg.pixelId || ''
+    MF.CAPI_TOKEN = cfg.capiToken || ''; MF.AD_ACCOUNT_ID = cfg.adAccountId || ''; MF.CURRENCY = cfg.currency || 'ARS'
     if (p.action === 'ping') return mfOut_({ ok: true, sheet: mfHoja_().getName() })
     if (p.action === 'find') return mfOut_(mfBuscar_(p.ref))
     if (p.action === 'sell') return mfOut_(mfVender_(p.ref, p.amount))
@@ -38,6 +46,68 @@ function doGet(e) {
   } catch (err) {
     return mfOut_({ error: String(err && err.message || err) })
   }
+}
+
+/* ---------- Configuración por cliente (guardada en las propiedades del script) ---------- */
+function mfConfig_(key) {
+  if (!key || String(key).length < 8) return null
+  var raw = PropertiesService.getScriptProperties().getProperty('client:' + key)
+  return raw ? JSON.parse(raw) : null
+}
+function mfConfigPublica_(c) {
+  if (!c) return null
+  return { sheetId: c.sheetId, sheetName: c.sheetName, pixelId: c.pixelId, adAccountId: c.adAccountId, currency: c.currency, hasCapiToken: !!c.capiToken, sheetTitle: c.sheetTitle }
+}
+function mfRegistrar_(p) {
+  if (!p.client || String(p.client).length < 8) return { error: 'Falta la clave del cliente.' }
+  var prev = mfConfig_(p.client) || {}
+  var m = String(p.sheet || '').match(/\/d\/([a-zA-Z0-9-_]+)/)
+  var sheetId = m ? m[1] : String(p.sheet || prev.sheetId || '').trim()
+  if (!sheetId) return { error: 'Falta el link de la planilla.' }
+  var ss
+  try { ss = SpreadsheetApp.openById(sheetId) } catch (err) { return { error: 'No puedo abrir esa planilla. ¿Está compartida con la cuenta de Google dueña del script?' } }
+  var sheetName = String(p.sheetName || prev.sheetName || 'Leads').trim()
+  var sh = ss.getSheetByName(sheetName)
+  if (!sh) return { error: 'La planilla no tiene una hoja llamada "' + sheetName + '".' }
+  var headers = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0]
+  var c = mfCols_(headers)
+  if (c.ref < 0) return { error: 'La hoja "' + sheetName + '" no tiene una columna "Ref".' }
+  var cfg = {
+    sheetId: sheetId, sheetName: sheetName, sheetTitle: ss.getName(),
+    pixelId: String(p.pixel != null ? p.pixel : prev.pixelId || '').trim(),
+    capiToken: String(p.capi || '').trim() || prev.capiToken || '',
+    adAccountId: String(p.account != null ? p.account : prev.adAccountId || '').replace(/^act_/, '').trim(),
+    currency: String(p.currency || prev.currency || 'ARS').trim(),
+  }
+  PropertiesService.getScriptProperties().setProperty('client:' + p.client, JSON.stringify(cfg))
+  return { ok: true, config: mfConfigPublica_(cfg), warnings: [
+    c.ad < 0 ? 'No encontré la columna utm_content (anuncio): no se va a poder atribuir por anuncio.' : null,
+    c.sold < 0 || c.amount < 0 ? 'Faltan las columnas "Venta" y/o "Monto": agregalas para poder marcar ventas.' : null,
+  ].filter(Boolean) }
+}
+
+/* ---------- Meta Ads (token del portafolio) ---------- */
+function mfAdsGet_(path) {
+  var resp = UrlFetchApp.fetch('https://graph.facebook.com/v21.0/' + path + (path.indexOf('?') < 0 ? '?' : '&') + 'access_token=' + encodeURIComponent(String(MF_SETTINGS.ADS_TOKEN).trim()), { muteHttpExceptions: true })
+  var body = JSON.parse(resp.getContentText())
+  if (body.error) throw new Error('Meta: ' + (body.error.error_user_msg || body.error.message))
+  return body
+}
+function mfProbarToken_() {
+  if (!/^EAA/.test(String(MF_SETTINGS.ADS_TOKEN).trim())) return { error: 'Falta pegar el token de Meta (ADS_TOKEN) en el script.' }
+  var me = mfAdsGet_('me?fields=id,name')
+  var n = mfCuentas_().accounts.length
+  return { ok: true, name: me.name, accounts: n }
+}
+function mfCuentas_() {
+  var out = [], path = 'me/adaccounts?fields=name,account_id,currency,account_status&limit=200'
+  while (path) {
+    var b = mfAdsGet_(path)
+    out = out.concat((b.data || []).map(function (a) { return { id: a.account_id, name: a.name, currency: a.currency, active: a.account_status === 1 } }))
+    path = b.paging && b.paging.next ? b.paging.next.replace('https://graph.facebook.com/v21.0/', '').replace(/&access_token=[^&]*/, '') : null
+  }
+  out.sort(function (a, b) { return String(a.name).localeCompare(String(b.name)) })
+  return { accounts: out }
 }
 
 function mfOut_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON) }
@@ -254,7 +324,7 @@ function mfInversion_(month) {
   if (!/^\d+$/.test(String(MF.AD_ACCOUNT_ID).trim()) || !/^EAA/.test(String(MF.ADS_TOKEN).trim())) return {}
   var m = String(month || '').match(/^(\d{4})-(\d{2})$/)
   if (!m) return {}
-  var cacheKey = 'MF_SPEND_' + month
+  var cacheKey = 'MF_SPEND_' + MF.AD_ACCOUNT_ID + '_' + month
   var cache = CacheService.getScriptCache()
   var hit = cache.get(cacheKey)
   if (hit) return { rows: JSON.parse(hit) }

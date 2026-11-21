@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
-import { collection, doc, onSnapshot, query, where, writeBatch, setDoc } from 'firebase/firestore'
+import { collection, doc, onSnapshot, query, where, writeBatch, setDoc, getDoc } from 'firebase/firestore'
 import { auth, auth2, fs } from './firebase.js'
 
 /* ============================================================
@@ -10,6 +10,21 @@ import { auth, auth2, fs } from './firebase.js'
    Firebase/Firestore es reemplazar load/save sin tocar la UI.
    ============================================================ */
 
+
+/* Script central: configuración (solo admins) y llamadas de administración. */
+export async function getIntegration() {
+  const s = await getDoc(doc(fs, 'meta', 'integration'))
+  return s.exists() ? s.data() : { url: '', adminKey: '' }
+}
+export const saveIntegration = (v) => setDoc(doc(fs, 'meta', 'integration'), v)
+export async function adminApi(integ, params) {
+  if (!integ?.url || !integ?.adminKey) throw new Error('Primero configurá la conexión en Equipo → "Conexión con Meta y planillas".')
+  let res
+  try { res = await fetch(`${integ.url}?${new URLSearchParams({ ...params, admin: integ.adminKey })}`) } catch { throw new Error('No se pudo conectar con el script central. Revisá la URL.') }
+  const data = await res.json().catch(() => ({ error: 'El script respondió algo inesperado. ¿Está publicado para "Cualquier usuario"?' }))
+  if (data.error) throw new Error(data.error)
+  return data
+}
 
 /* Conexión con la planilla de leads del cliente (Apps Script publicado como aplicación web). */
 export async function sheetApi(client, params) {

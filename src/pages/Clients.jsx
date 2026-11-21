@@ -1,10 +1,52 @@
-import { useState } from 'react'
-import { useStore, sendReset, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
+import { useEffect, useState } from 'react'
+import { useStore, sendReset, getIntegration, adminApi, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
 import { Modal, Field, Card, Progress, Badge, Empty, Avatar, Tabs, Stat, UserSelect, go, fmtDate, fmtDateTime } from '../ui.jsx'
 import TasksPage, { TaskRow } from './Tasks.jsx'
 import ApprovalsPage, { DelivCard } from './Deliverables.jsx'
 import ReportsPage from './Reports.jsx'
 import FilesPage from './Files.jsx'
+
+function SalesConnection({ f, conn, setConn }) {
+  const [accounts, setAccounts] = useState(null)
+  const [err, setErr] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    getIntegration().then(async (integ) => {
+      try {
+        const [acc, cfg] = await Promise.all([adminApi(integ, { action: 'accounts' }), adminApi(integ, { action: 'config', client: f.salesKey })])
+        setAccounts(acc.accounts)
+        const c = cfg.config
+        if (c) setConn((p) => ({ ...p, sheet: `https://docs.google.com/spreadsheets/d/${c.sheetId}/edit`, sheetName: c.sheetName || 'Leads', pixel: c.pixelId || '', account: c.adAccountId || '', currency: c.currency || '', hasCapi: c.hasCapiToken, title: c.sheetTitle }))
+      } catch (e) { setErr(e.message) }
+      setLoaded(true)
+    })
+  }, []) // eslint-disable-line
+  const set = (k) => (e) => setConn((p) => ({ ...p, [k]: e.target.value, dirty: true }))
+  return (
+    <>
+      <h4>Métricas y ventas</h4>
+      {err && <div className="callout warn">{err}</div>}
+      {!loaded ? <p className="muted sm">Cargando conexión…</p> : <>
+        <Field label="Cuenta publicitaria">
+          <select value={conn.account} onChange={(e) => { const a = accounts?.find((x) => x.id === e.target.value); setConn((p) => ({ ...p, account: e.target.value, currency: a?.currency || p.currency, dirty: true })) }}>
+            <option value="">Sin cuenta publicitaria</option>
+            {(accounts || []).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.id}{a.active ? '' : ' (inactiva)'}</option>)}
+          </select>
+        </Field>
+        <Field label="Link de la planilla de leads" hint={conn.title ? `Conectada: ${conn.title}` : 'La planilla tiene que estar en la misma cuenta de Google que el script (o compartida con ella).'}>
+          <input value={conn.sheet} placeholder="https://docs.google.com/spreadsheets/d/…" onChange={set('sheet')} />
+        </Field>
+        <div className="grid2">
+          <Field label="Nombre de la hoja"><input value={conn.sheetName} onChange={set('sheetName')} /></Field>
+          <Field label="Píxel (ID del conjunto de datos)"><input value={conn.pixel} inputMode="numeric" onChange={set('pixel')} /></Field>
+        </div>
+        <Field label="Token de API de conversiones" hint={conn.hasCapi ? 'Ya hay un token guardado. Dejalo vacío para mantenerlo.' : 'Events Manager → píxel → Configuración → Generar token de acceso.'}>
+          <input type="password" value={conn.capi} placeholder={conn.hasCapi ? '••••••••' : 'EAA…'} onChange={set('capi')} />
+        </Field>
+      </>}
+    </>
+  )
+}
 
 export function ClientModal({ client, onClose }) {
   const { actions, view } = useStore()
@@ -12,8 +54,18 @@ export function ClientModal({ client, onClose }) {
   const [f, setF] = useState(() => ({ salesKey: Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10), ...(client || { name: '', contact: '', email: '', status: 'activo' }) }))
   const [acc, setAcc] = useState({ name: login?.name || '', email: login?.email || '', password: '' })
   const [busy, setBusy] = useState(false)
+  const [conn, setConn] = useState({ sheet: '', sheetName: 'Leads', pixel: '', capi: '', account: '', currency: '', dirty: false })
   const save = async () => {
     if (!f.name.trim()) return alert('Poné el nombre del cliente.')
+    if (conn.dirty) {
+      setBusy(true)
+      try {
+        const integ = await getIntegration()
+        const r = await adminApi(integ, { action: 'register', client: f.salesKey, sheet: conn.sheet, sheetName: conn.sheetName, pixel: conn.pixel, capi: conn.capi, account: conn.account, currency: conn.currency })
+        f.salesUrl = integ.url
+        if (r.warnings?.length) alert(r.warnings.join('\n'))
+      } catch (e) { setBusy(false); return alert('No se pudo guardar la conexión: ' + e.message) }
+    }
     if (!login && acc.email && acc.password.length < 6) return alert('La contraseña del cliente debe tener al menos 6 caracteres.')
     setBusy(true)
     const err = await actions.saveClient(f, acc.email ? acc : null)
@@ -30,13 +82,7 @@ export function ClientModal({ client, onClose }) {
         <Field label="Contacto"><input value={f.contact} onChange={(e) => setF({ ...f, contact: e.target.value })} /></Field>
       </div>
       <Field label="Estado del servicio"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="activo">Activo</option><option value="pausado">Pausado</option><option value="finalizado">Finalizado</option></select></Field>
-      <h4>Planilla de leads (ventas)</h4>
-      <Field label="URL de la aplicación web" hint="Apps Script de la planilla → Implementar → Aplicación web. Ver integraciones/metaflash-ventas.gs">
-        <input value={f.salesUrl || ''} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setF({ ...f, salesUrl: e.target.value.trim() })} />
-      </Field>
-      <Field label="Clave (la misma que dice KEY en el script)">
-        <div className="row gap-s"><input value={f.salesKey} className="code" onChange={(e) => setF({ ...f, salesKey: e.target.value.trim() })} /><button type="button" className="btn sm" onClick={() => { navigator.clipboard?.writeText(f.salesKey); alert('Clave copiada') }}>Copiar</button></div>
-      </Field>
+      <SalesConnection f={f} setF={setF} conn={conn} setConn={setConn} />
       <h4>Acceso al portal del cliente</h4>
       <div className="grid2">
         <Field label="Email de acceso"><input type="email" disabled={!!login} value={acc.email} onChange={(e) => setAcc({ ...acc, email: e.target.value })} /></Field>
