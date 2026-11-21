@@ -41,7 +41,7 @@ function SalesConnection({ f, conn, setConn }) {
           <Field label="Píxel (ID del conjunto de datos)"><input value={conn.pixel} inputMode="numeric" onChange={set('pixel')} /></Field>
         </div>
         <Field label="Token de API de conversiones" hint={conn.hasCapi ? 'Ya hay un token guardado. Dejalo vacío para mantenerlo.' : 'Events Manager → píxel → Configuración → Generar token de acceso.'}>
-          <input type="password" value={conn.capi} placeholder={conn.hasCapi ? '••••••••' : 'EAA…'} onChange={set('capi')} />
+          <input type="password" autoComplete="new-password" name="mf-capi-token" value={conn.capi} placeholder={conn.hasCapi ? '••••••••' : 'EAA…'} onChange={set('capi')} />
         </Field>
       </>}
     </>
