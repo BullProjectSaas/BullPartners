@@ -57,6 +57,12 @@ service cloud.firestore {
       allow create: if staff() || (clientOf(request.resource.data.clientId) && request.resource.data.internal == false && request.resource.data.by == myEmail());
       allow update, delete: if staff();
     }
+    // Leads: los carga el script de Google de cada planilla. El cliente solo puede marcar la venta.
+    match /leads/{id} {
+      allow read: if staff() || mine();
+      allow create, delete: if staff();
+      allow update: if staff() || (mine() && onlyChanges(['sold', 'amount', 'soldAt', 'soldBy', 'capiSent']));
+    }
     match /notifications/{id} {
       allow read: if signed() && resource.data.userId == myEmail();
       allow create: if staff() || hasProfile();

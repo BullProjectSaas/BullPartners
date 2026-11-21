@@ -141,7 +141,10 @@ export function ClientDetail({ id }) {
       <button className="link sm" onClick={() => go('#/clients')}>‹ Clientes</button>
       <div className="page-h">
         <div className="row gap"><span className="logo-c">{client.name[0]}</span><div><h1>{client.name}</h1><p className="muted">{client.contact && <>{client.contact} · </>}<Badge color={PROJECT_STATUS[client.status]?.color || '#16A34A'}>{PROJECT_STATUS[client.status]?.label || 'Activo'}</Badge></p></div></div>
-        {user.role === 'admin' && <button className="btn" onClick={() => setEditing(true)}>Editar cliente</button>}
+        {user.role === 'admin' && <div className="row gap-s wrap">
+          <button className="btn ghost sm" title="Se usa en el script de la planilla de leads" onClick={() => { navigator.clipboard?.writeText(client.id); alert('ID copiado: ' + client.id) }}>🔗 ID para planilla: <span className="code">{client.id}</span></button>
+          <button className="btn" onClick={() => setEditing(true)}>Editar cliente</button>
+        </div>}
       </div>
       <Tabs value={tab} onChange={setTab} tabs={[
         { id: 'overview', label: 'Resumen' }, { id: 'tasks', label: 'Tareas' },

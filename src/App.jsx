@@ -8,6 +8,7 @@ import ApprovalsPage, { DeliverableModal } from './pages/Deliverables.jsx'
 import ReportsPage, { ReportModal } from './pages/Reports.jsx'
 import CalendarPage from './pages/Calendar.jsx'
 import FilesPage from './pages/Files.jsx'
+import SalesPage from './pages/Sales.jsx'
 import TeamPage from './pages/Team.jsx'
 
 function Login() {
@@ -48,10 +49,10 @@ function Login() {
 }
 
 const STAFF_NAV = [
-  ['', '🏠', 'Inicio'], ['clients', '👥', 'Clientes'], ['tasks', '✓', 'Tareas'], ['approvals', '🖼', 'Aprobaciones'],
+  ['', '🏠', 'Inicio'], ['clients', '👥', 'Clientes'], ['tasks', '✓', 'Tareas'], ['approvals', '🖼', 'Aprobaciones'], ['sales', '💰', 'Ventas'],
   ['calendar', '📅', 'Calendario'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['team', '⚙︎', 'Equipo'],
 ]
-const CLIENT_NAV = [['', '🏠', 'Inicio'], ['approvals', '✅', 'Aprobar'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['calendar', '📅', 'Calendario']]
+const CLIENT_NAV = [['', '🏠', 'Inicio'], ['sales', '💰', 'Ventas'], ['approvals', '✅', 'Aprobar'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['calendar', '📅', 'Calendario']]
 const MODAL_BG = { task: 'tasks', deliverable: 'approvals', report: 'reports' }
 let lastBg = null // última página (no modal) visitada
 
@@ -91,6 +92,7 @@ export default function App() {
   else if (page === 'calendar') body = <CalendarPage />
   else if (page === 'reports') body = <ReportsPage />
   else if (page === 'files') body = <FilesPage />
+  else if (page === 'sales') body = <SalesPage />
   else if (page === 'team' && user.role === 'admin') body = <TeamPage />
   else if (page === 'notifications') body = <NotificationsPage />
   else body = staff ? <AdminHome /> : <ClientHome />
