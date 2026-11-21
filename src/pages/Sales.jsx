@@ -80,6 +80,8 @@ export default function SalesPage() {
   const [sum, setSum] = useState(null)
   const [err, setErr] = useState('')
   const [filter, setFilter] = useState('all')
+  const [tab, setTab] = useState('campaigns')
+  const [camp, setCamp] = useState(null)
 
   const loadSummary = useCallback(async () => {
     if (!client?.salesUrl) return
@@ -131,22 +133,54 @@ export default function SalesPage() {
 
         <div className="row gap-s mb"><button className="icon-btn" onClick={() => setMk(addMonths(mk, -1))}>‹</button><b>{monthLabel(mk)}</b><button className="icon-btn" onClick={() => setMk(addMonths(mk, 1))}>›</button></div>
         {err && <div className="callout warn mb">{err}</div>}
+        {staff && sum?.metaError && <div className="callout warn mb">{sum.metaError}</div>}
         <div className="stats4 card mb">
-          <Stat label="Leads" value={t ? t.leads : '…'} />
-          <Stat label="Ventas" value={t ? t.sales : '…'} color="#16A34A" />
+          {sum?.hasSpend && <Stat label="Inversión" value={fmtMoney(t.spend)} />}
+          <Stat label="Leads" value={t ? t.leads : '…'} sub={sum?.hasSpend && t.cpl != null ? `${fmtMoney(t.cpl)} por lead` : null} />
+          <Stat label="Ventas" value={t ? t.sales : '…'} color="#16A34A" sub={sum?.hasSpend && t.cps != null ? `${fmtMoney(t.cps)} por venta` : null} />
           <Stat label="Facturación" value={t ? fmtMoney(t.revenue) : '…'} />
-          <Stat label="Tasa de cierre" value={t ? (t.leads ? Math.round((t.sales / t.leads) * 100) + '%' : '—') : '…'} />
+          {sum?.hasSpend && <Stat label="ROAS" value={fmtRoas(t.roas)} color={t.roas >= 1 ? '#16A34A' : t.roas != null ? '#DC2626' : undefined} />}
+          <Stat label="Tasa de cierre" value={t ? fmtPct(t.closeRate ?? (t.leads ? t.sales / t.leads : null)) : '…'} />
+          <Stat label="Tiempo a la venta" value={t ? fmtDays(t.avgDays) : '…'} sub="promedio desde el lead" />
         </div>
 
-        <div className="grid2">
-          <Card title="Resultados por anuncio">
-            {!sum ? <p className="muted sm">Cargando…</p> : sum.byAd.length ? (
-              <div className="table ads">
-                <div className="tr th"><span>Anuncio</span><span>Leads</span><span>Ventas</span><span>Facturación</span></div>
-                {sum.byAd.map((r) => <div key={r.ad} className="tr static"><span className="ellipsis" title={r.ad}>{r.ad || 'Sin anuncio (orgánico o directo)'}</span><span>{r.leads}</span><span>{r.sales}</span><span>{fmtMoney(r.revenue)}</span></div>)}
+        <Card className="mb" title={<div className="tabs inline">
+          <button className={tab === 'campaigns' ? 'on' : ''} onClick={() => { setTab('campaigns'); setCamp(null) }}>Por campaña</button>
+          <button className={tab === 'ads' ? 'on' : ''} onClick={() => setTab('ads')}>Por anuncio</button>
+        </div>} action={tab === 'ads' && camp != null && <button className="chip" onClick={() => setCamp(null)}>{camp || 'Sin campaña'} ✕</button>}>
+          {!sum ? <p className="muted sm">Cargando…</p> : tab === 'campaigns' ? (
+            sum.campaigns?.length ? (
+              <div className="rtable">
+                <div className="rt-h"><span>Campaña</span>{sum.hasSpend && <span>Inversión</span>}<span>Leads</span><span>Ventas</span><span>Cierre</span><span>Facturación</span>{sum.hasSpend && <span>ROAS</span>}<span>Días a venta</span></div>
+                {sum.campaigns.map((r) => (
+                  <div key={r.campaign} className="rt-r click" onClick={() => { setCamp(r.campaign || ''); setTab('ads') }} title="Ver anuncios de esta campaña">
+                    <span className="ellipsis"><b>{r.campaign || 'Sin campaña (orgánico o directo)'}</b></span>
+                    {sum.hasSpend && <span>{r.spend != null ? fmtMoney(r.spend) : '—'}</span>}
+                    <span>{r.leads}</span><span>{r.sales}</span><span>{fmtPct(r.closeRate)}</span><span>{fmtMoney(r.revenue)}</span>
+                    {sum.hasSpend && <span className={r.roas >= 1 ? 'pos' : r.roas != null ? 'neg' : ''}>{fmtRoas(r.roas)}</span>}
+                    <span>{fmtDays(r.avgDays)} <span className="muted">›</span></span>
+                  </div>
+                ))}
               </div>
-            ) : <p className="muted sm">Sin leads este mes.</p>}
-          </Card>
+            ) : <p className="muted sm">Sin datos este mes.</p>
+          ) : (
+            <div className="rtable">
+              <div className="rt-h"><span>Anuncio</span>{sum.hasSpend && <span>Inversión</span>}<span>Leads</span><span>Ventas</span><span>Cierre</span><span>Facturación</span>{sum.hasSpend && <span>ROAS</span>}<span>Días a venta</span></div>
+              {(sum.ads || []).filter((r) => camp == null || (r.campaign || '') === camp).map((r) => (
+                <div key={(r.campaign || '') + '|' + (r.ad || '')} className="rt-r">
+                  <span className="ellipsis" title={r.ad}><b>{r.ad || 'Sin anuncio'}</b>{camp == null && <small className="muted block ellipsis">{r.campaign}</small>}</span>
+                  {sum.hasSpend && <span>{r.spend != null ? fmtMoney(r.spend) : '—'}</span>}
+                  <span>{r.leads}</span><span>{r.sales}</span><span>{fmtPct(r.closeRate)}</span><span>{fmtMoney(r.revenue)}</span>
+                  {sum.hasSpend && <span className={r.roas >= 1 ? 'pos' : r.roas != null ? 'neg' : ''}>{fmtRoas(r.roas)}</span>}
+                  <span>{fmtDays(r.avgDays)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {sum && !sum.hasSpend && staff && <p className="muted sm mt-s">Para ver inversión, ROAS y costo por venta, completá la cuenta publicitaria y el token de Ads en el script de la planilla.</p>}
+        </Card>
+
+        <div>
           <Card title="Leads del mes" action={<select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Todos</option><option value="open">Sin vender</option><option value="sold">Vendidos</option></select>}>
             <div className="lead-list">
               {list.map((l) => (
@@ -163,3 +197,7 @@ export default function SalesPage() {
     </div>
   )
 }
+
+const fmtPct = (v) => (v == null ? '—' : Math.round(v * 100) + '%')
+const fmtRoas = (v) => (v == null ? '—' : v.toFixed(1).replace('.', ',') + 'x')
+const fmtDays = (v) => (v == null ? '—' : v < 1 ? 'mismo día' : Math.round(v) + (Math.round(v) === 1 ? ' día' : ' días'))
