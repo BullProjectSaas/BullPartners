@@ -39,7 +39,7 @@ function IntegrationCard() {
       await saveIntegration(v)
       const r = await adminApi(v, { action: 'test' })
       setMsg(`✓ Conectado a Meta como "${r.name}" · ${r.accounts} cuentas publicitarias disponibles`)
-    } catch (e) { setMsg('✗ ' + e.message) }
+    } catch (e) { setMsg('✗ ' + (/permission/i.test(e.message) ? 'Firebase no deja guardar: falta pegar las reglas nuevas (firestore.rules) en Firebase → Firestore → Reglas.' : e.message)) }
     setBusy(false)
   }
   return (
@@ -47,8 +47,8 @@ function IntegrationCard() {
       <h3>Conexión con Meta y planillas</h3>
       <p className="muted sm mb">Script central de Google (integraciones/metaflash-central.gs). Se configura una sola vez.</p>
       <div className="grid2">
-        <label className="field"><span>URL de la aplicación web</span><input value={v.url} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setV({ ...v, url: e.target.value.trim() })} /></label>
-        <label className="field"><span>Clave de administrador (ADMIN_KEY)</span><input type="password" value={v.adminKey} onChange={(e) => setV({ ...v, adminKey: e.target.value.trim() })} /></label>
+        <label className="field"><span>URL de la aplicación web</span><input name="mf-script-url" autoComplete="off" value={v.url} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setV({ ...v, url: e.target.value.trim() })} /></label>
+        <label className="field"><span>Clave de administrador (ADMIN_KEY)</span><input name="mf-admin-key" autoComplete="off" spellCheck={false} className="code" value={v.adminKey} onChange={(e) => setV({ ...v, adminKey: e.target.value.trim() })} /></label>
       </div>
       <div className="row gap wrap"><button className="btn primary" disabled={busy || !v.url || !v.adminKey} onClick={test}>{busy ? 'Probando…' : 'Guardar y probar conexión'}</button>{msg && <span className={'sm ' + (msg.startsWith('✓') ? 'pos' : 'neg')}>{msg}</span>}</div>
     </div>
