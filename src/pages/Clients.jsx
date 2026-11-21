@@ -34,8 +34,8 @@ export function ClientModal({ client, onClose }) {
       <Field label="URL de la aplicación web" hint="Apps Script de la planilla → Implementar → Aplicación web. Ver integraciones/metaflash-ventas.gs">
         <input value={f.salesUrl || ''} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setF({ ...f, salesUrl: e.target.value.trim() })} />
       </Field>
-      <Field label="Clave (pegala en el script, en KEY)">
-        <div className="row gap-s"><input readOnly value={f.salesKey} className="code" /><button type="button" className="btn sm" onClick={() => { navigator.clipboard?.writeText(f.salesKey); alert('Clave copiada') }}>Copiar</button></div>
+      <Field label="Clave (la misma que dice KEY en el script)">
+        <div className="row gap-s"><input value={f.salesKey} className="code" onChange={(e) => setF({ ...f, salesKey: e.target.value.trim() })} /><button type="button" className="btn sm" onClick={() => { navigator.clipboard?.writeText(f.salesKey); alert('Clave copiada') }}>Copiar</button></div>
       </Field>
       <h4>Acceso al portal del cliente</h4>
       <div className="grid2">
