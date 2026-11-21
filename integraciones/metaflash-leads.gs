@@ -19,6 +19,7 @@ var MF_CONFIG = {
   PIXEL_ID: 'PEGAR_PIXEL_ID',
   CAPI_TOKEN: 'PEGAR_TOKEN_CAPI',
   CURRENCY: 'ARS',
+  SHEET_ID: '17s0Za78bjPDidNHKtgfRBzCE5X-IgwS0krHuDsT7cx8', // ID de la planilla (está en su link, entre /d/ y /edit)
   SHEET_NAME: 'Leads',
   SITE_URL: 'https://sociosdetoros.com',
 }
@@ -56,6 +57,13 @@ function mfSincronizar() {
   }
 }
 
+function mfHoja_() {
+  var ss = MF_CONFIG.SHEET_ID ? SpreadsheetApp.openById(MF_CONFIG.SHEET_ID) : SpreadsheetApp.getActive()
+  var sh = ss.getSheetByName(MF_CONFIG.SHEET_NAME)
+  if (!sh) throw new Error('No encuentro la hoja "' + MF_CONFIG.SHEET_NAME + '" en la planilla')
+  return sh
+}
+
 /* ---------- 1. Leads → MetaFlash ---------- */
 function mfColumnas_(headers) {
   var find = function (re) {
@@ -80,7 +88,7 @@ function mfFecha_(v) {
 }
 
 function mfSubirLeads_() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(MF_CONFIG.SHEET_NAME)
+  var sh = mfHoja_()
   var values = sh.getDataRange().getValues()
   if (values.length < 2) return
   var headers = values[0]
@@ -133,7 +141,7 @@ function mfProcesarVentas_() {
   var leads = (res || []).filter(function (x) { return x.document }).map(function (x) { return mfFromFields_(x.document.fields) })
   if (!leads.length) return
 
-  var sh = SpreadsheetApp.getActive().getSheetByName(MF_CONFIG.SHEET_NAME)
+  var sh = mfHoja_()
   var values = sh.getDataRange().getValues()
   var c = mfColumnas_(values[0])
 
