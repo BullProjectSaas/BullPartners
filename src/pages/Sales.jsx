@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useStore, monthKey, monthLabel, addMonths, fmtMoney, sheetApi } from '../store.jsx'
 import { Card, Stat, Empty, Badge, Modal, fmtDate, useRoute } from '../ui.jsx'
 import SalesChart from './SalesChart.jsx'
+import { computeSummary } from '../salesMath.js'
 
 function LeadCard({ lead, client, onChange }) {
   const { actions, user } = useStore()
@@ -88,7 +89,11 @@ export default function SalesPage() {
   const loadSummary = useCallback(async () => {
     if (!client?.salesUrl) return
     setSum(null); setErr('')
-    try { setSum(await sheetApi(client, { action: 'summary', since: range.since, until: range.until })) } catch (e) { setErr(e.message) }
+    try {
+      const q = { since: range.since, until: range.until }
+      const [rows, spend] = await Promise.all([sheetApi(client, { action: 'rows', ...q }), sheetApi(client, { action: 'spend', ...q }).catch((e) => ({ hasSpend: false, error: e.message }))])
+      setSum(computeSummary(rows.rows, spend, range.since, range.until))
+    } catch (e) { setErr(e.message) }
   }, [client?.salesUrl, client?.salesKey, range.since, range.until]) // eslint-disable-line
   useEffect(() => { loadSummary() }, [loadSummary])
 

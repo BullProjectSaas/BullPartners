@@ -41,6 +41,9 @@ function doGet(e) {
     if (p.action === 'sell') return mfOut_(mfVender_(p.ref, p.amount))
     if (p.action === 'unsell') return mfOut_(mfDeshacer_(p.ref))
     if (p.action === 'summary') return mfOut_(mfResumen_(mfRango_(p)))
+    // Puente: datos crudos; los cálculos los hace la app (así el script casi no cambia).
+    if (p.action === 'rows') return mfOut_(mfFilas_(mfRango_(p)))
+    if (p.action === 'spend') { var rg = mfRango_(p); var sp = mfInversion_(rg.since, rg.until); return mfOut_({ hasSpend: !!sp.rows, rows: sp.rows || [], daily: sp.daily || [], error: sp.error || null }) }
     if (p.action === 'capi') return mfOut_(mfReenviar_(p.ref))
     return mfOut_({ error: 'Acción desconocida' })
   } catch (err) {
@@ -335,6 +338,20 @@ function mfResumen_(rango) {
     metaError: meta.error || null,
     hasSpend: !!meta.rows,
   }
+}
+
+/* Filas de la planilla con lead o venta dentro del rango (sin cálculos). */
+function mfFilas_(rango) {
+  var t = mfLeer_(), out = []
+  var dentro = function (d) { d = String(d || '').slice(0, 10); return d >= rango.since && d <= rango.until }
+  for (var r = 1; r < t.values.length; r++) {
+    var row = t.values[r]
+    if (!String(row[t.c.ref] || '').trim()) continue
+    var l = mfLead_(t, row)
+    if (!dentro(l.date) && !(l.sold && dentro(l.soldDate || l.date))) continue
+    out.push({ ref: l.ref, name: l.name, date: l.date, campaign: l.campaign, adset: l.adset, ad: l.ad, sold: l.sold, amount: l.amount, soldDate: l.soldDate })
+  }
+  return { rows: out }
 }
 
 /* Inversión de Meta Ads del rango: por anuncio y por día (caché de 30 minutos). */
