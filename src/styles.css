@@ -346,3 +346,21 @@ form + .news { border-top: 1px solid var(--line2); margin-top: 10px; }
 .with-check .rt-h > span:first-child, .with-check .rt-r > span:first-child { text-align: center; }
 .with-check input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
 .rt-r.off { opacity: .45; }
+
+/* Gráfico de ventas (paleta validada: inversión = naranja, facturación = azul) */
+:root { --s-spend: #eb6834; --s-rev: #2a78d6; }
+:root[data-theme="dark"] { --s-spend: #d95926; --s-rev: #3987e5; }
+.chart-legend { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; font-size: 13px; margin-bottom: 8px; }
+.chart-legend i, .tip i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.chart-box { position: relative; touch-action: pan-y; }
+.chart svg { display: block; overflow: visible; }
+.chart .grid { stroke: var(--line2); }
+.chart .baseline { stroke: var(--line-strong); }
+.chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.chart .hover-band { fill: var(--text); opacity: .05; }
+.tip { position: absolute; top: 4px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 10px 12px; font-size: 12.5px; pointer-events: none; min-width: 180px; z-index: 2; }
+.tip b { display: block; margin-bottom: 6px; }
+.tip div { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+.tip span { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; padding-left: 12px; }
+.range-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.range-bar input[type=date] { width: auto; }

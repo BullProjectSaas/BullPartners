@@ -40,7 +40,7 @@ function doGet(e) {
     if (p.action === 'find') return mfOut_(mfBuscar_(p.ref))
     if (p.action === 'sell') return mfOut_(mfVender_(p.ref, p.amount))
     if (p.action === 'unsell') return mfOut_(mfDeshacer_(p.ref))
-    if (p.action === 'summary') return mfOut_(mfResumen_(p.month))
+    if (p.action === 'summary') return mfOut_(mfResumen_(mfRango_(p)))
     if (p.action === 'capi') return mfOut_(mfReenviar_(p.ref))
     return mfOut_({ error: 'Acción desconocida' })
   } catch (err) {
@@ -261,30 +261,46 @@ function mfDeshacer_(ref) {
 
 function mfKey_(v) { return String(v || '').trim().toLowerCase() }
 
-function mfResumen_(month) {
+/* Rango de fechas: ?since=AAAA-MM-DD&until=AAAA-MM-DD, o ?month=AAAA-MM (compatibilidad). */
+function mfRango_(p) {
+  var re = /^\d{4}-\d{2}-\d{2}$/
+  if (re.test(p.since || '') && re.test(p.until || '')) return { since: p.since, until: p.until }
+  var m = String(p.month || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM')).match(/^(\d{4})-(\d{2})$/)
+  var last = new Date(Number(m[1]), Number(m[2]), 0).getDate()
+  return { since: m[1] + '-' + m[2] + '-01', until: m[1] + '-' + m[2] + '-' + ('0' + last).slice(-2) }
+}
+
+function mfResumen_(rango) {
   var t = mfLeer_()
-  var ads = {}, camps = {}, leads = []
+  var since = rango.since, until = rango.until
+  var dentro = function (d) { d = String(d || '').slice(0, 10); return d >= since && d <= until }
+  var ads = {}, camps = {}, leads = [], daily = {}
   var total = { leads: 0, sales: 0, revenue: 0, spend: null, days: 0, daysN: 0 }
   var nuevo = function (o) { o.leads = 0; o.sales = 0; o.revenue = 0; o.spend = null; o.days = 0; o.daysN = 0; return o }
+  var dia = function (d, camp) { var k = d + '|' + mfKey_(camp); return daily[k] || (daily[k] = { date: d, campaign: camp || '', spend: 0, revenue: 0, sales: 0, leads: 0 }) }
   for (var r = 1; r < t.values.length; r++) {
     var row = t.values[r]
     if (!String(row[t.c.ref] || '').trim()) continue
     var l = mfLead_(t, row)
-    if (month && l.date.indexOf(month) !== 0) continue
+    // El lead cuenta por su fecha; la venta, por la fecha en que se vendió.
+    var saleDay = (l.soldDate || l.date || '').slice(0, 10)
+    var leadIn = dentro(l.date), saleIn = l.sold && dentro(saleDay)
+    if (!leadIn && !saleIn) continue
     var ck = mfKey_(l.campaign), ak = ck + '|' + mfKey_(l.ad)
     var cmp = camps[ck] || (camps[ck] = nuevo({ campaign: l.campaign }))
     var ad = ads[ak] || (ads[ak] = nuevo({ ad: l.ad, campaign: l.campaign, adset: l.adset }))
     ;[cmp, ad, total].forEach(function (o) {
-      o.leads++
-      if (l.sold) {
+      if (leadIn) o.leads++
+      if (saleIn) {
         o.sales++; o.revenue += l.amount
         if (l.soldDate && l.date) { o.days += (new Date(l.soldDate) - new Date(l.date)) / 86400000; o.daysN++ }
       }
     })
-    leads.push({ ref: l.ref, name: l.name, date: l.date, ad: l.ad, campaign: l.campaign, sold: l.sold, amount: l.amount })
+    if (leadIn) { dia(l.date.slice(0, 10), l.campaign).leads++; leads.push({ ref: l.ref, name: l.name, date: l.date, ad: l.ad, campaign: l.campaign, sold: l.sold, amount: l.amount }) }
+    if (saleIn) { var dd = dia(saleDay, l.campaign); dd.sales++; dd.revenue += l.amount }
   }
-  // Inversión de Meta Ads por anuncio (si está configurada)
-  var meta = mfInversion_(month)
+  // Inversión de Meta Ads (si está configurada)
+  var meta = mfInversion_(since, until)
   if (meta.rows) {
     total.spend = 0
     meta.rows.forEach(function (m) {
@@ -296,6 +312,7 @@ function mfResumen_(month) {
       ad.impressions = (ad.impressions || 0) + Number(m.impressions || 0)
       ad.clicks = (ad.clicks || 0) + Number(m.clicks || 0)
     })
+    ;(meta.daily || []).forEach(function (d) { dia(d.date_start, d.campaign_name).spend += Number(d.spend) || 0 })
   }
   var fin = function (o) {
     o.closeRate = o.leads ? o.sales / o.leads : null
@@ -309,44 +326,47 @@ function mfResumen_(month) {
   var orden = function (a, b) { return (b.revenue - a.revenue) || ((b.spend || 0) - (a.spend || 0)) || (b.leads - a.leads) }
   leads.sort(function (a, b) { return a.date < b.date ? 1 : -1 })
   return {
+    since: since, until: until,
     total: fin(total),
     campaigns: Object.keys(camps).map(function (k) { return fin(camps[k]) }).sort(orden),
     ads: Object.keys(ads).map(function (k) { return fin(ads[k]) }).sort(orden),
-    byAd: Object.keys(ads).map(function (k) { return ads[k] }).sort(orden),
+    daily: Object.keys(daily).sort().map(function (k) { return daily[k] }),
     leads: leads,
     metaError: meta.error || null,
     hasSpend: !!meta.rows,
   }
 }
 
-/* Inversión por anuncio desde la API de Marketing de Meta (con caché de 30 minutos). */
-function mfInversion_(month) {
+/* Inversión de Meta Ads del rango: por anuncio y por día (caché de 30 minutos). */
+function mfInversion_(since, until) {
   if (!/^\d+$/.test(String(MF.AD_ACCOUNT_ID).trim()) || !/^EAA/.test(String(MF.ADS_TOKEN).trim())) return {}
-  var m = String(month || '').match(/^(\d{4})-(\d{2})$/)
-  if (!m) return {}
-  var cacheKey = 'MF_SPEND_' + MF.AD_ACCOUNT_ID + '_' + month
+  var cacheKey = 'MF_SPEND3_' + MF.AD_ACCOUNT_ID + '_' + since + '_' + until
   var cache = CacheService.getScriptCache()
   var hit = cache.get(cacheKey)
-  if (hit) return { rows: JSON.parse(hit) }
-  var last = new Date(Number(m[1]), Number(m[2]), 0).getDate()
-  var range = JSON.stringify({ since: month + '-01', until: month + '-' + ('0' + last).slice(-2) })
-  var url = 'https://graph.facebook.com/v21.0/act_' + String(MF.AD_ACCOUNT_ID).trim() + '/insights?level=ad&limit=500' +
-    '&fields=campaign_name,adset_name,ad_name,spend,impressions,clicks&time_range=' + encodeURIComponent(range) +
-    '&access_token=' + encodeURIComponent(String(MF.ADS_TOKEN).trim())
-  var rows = []
-  try {
+  if (hit) return JSON.parse(hit)
+  var base = 'https://graph.facebook.com/v21.0/act_' + String(MF.AD_ACCOUNT_ID).trim() + '/insights?limit=500&time_range=' +
+    encodeURIComponent(JSON.stringify({ since: since, until: until })) + '&access_token=' + encodeURIComponent(String(MF.ADS_TOKEN).trim())
+  var traer = function (url) {
+    var rows = []
     while (url) {
-      var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true })
-      var body = JSON.parse(resp.getContentText())
-      if (body.error) return { error: 'Meta Ads: ' + (body.error.error_user_msg || body.error.message) }
+      var body = JSON.parse(UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getContentText())
+      if (body.error) throw new Error('Meta Ads: ' + (body.error.error_user_msg || body.error.message))
       rows = rows.concat(body.data || [])
       url = body.paging && body.paging.next
     }
-  } catch (err) {
-    return { error: 'No se pudo leer la inversión de Meta Ads: ' + (err && err.message || err) }
+    return rows
   }
-  try { cache.put(cacheKey, JSON.stringify(rows), 1800) } catch (x) {}
-  return { rows: rows }
+  var out
+  try {
+    out = {
+      rows: traer(base + '&level=ad&fields=campaign_name,adset_name,ad_name,spend,impressions,clicks'),
+      daily: traer(base + '&level=campaign&time_increment=1&fields=campaign_name,spend'),
+    }
+  } catch (err) {
+    return { error: String(err && err.message || err) }
+  }
+  try { cache.put(cacheKey, JSON.stringify(out), 1800) } catch (x) {}
+  return out
 }
 
 /* ---------- Meta · API de Conversiones ---------- */
@@ -401,5 +421,5 @@ function mfPurchase_(t, row, lead) {
 
 /* Para probar desde el editor: elegí esta función y tocá Ejecutar. */
 function mfProbar() {
-  Logger.log(JSON.stringify(mfResumen_(Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM')).total))
+  Logger.log(JSON.stringify(mfResumen_(mfRango_({})).total))
 }

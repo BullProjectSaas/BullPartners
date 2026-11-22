@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useStore, monthKey, monthLabel, addMonths, fmtMoney, sheetApi } from '../store.jsx'
-import { Card, Stat, Empty, Badge, fmtDate, useRoute } from '../ui.jsx'
+import { Card, Stat, Empty, Badge, Modal, fmtDate, useRoute } from '../ui.jsx'
+import SalesChart from './SalesChart.jsx'
 
 function LeadCard({ lead, client, onChange }) {
   const { actions, user } = useStore()
@@ -76,7 +77,8 @@ export default function SalesPage() {
   const [lead, setLead] = useState(null)
   const [searching, setSearching] = useState(false)
   const [notFound, setNotFound] = useState(false)
-  const [mk, setMk] = useState(monthKey())
+  const [sellOpen, setSellOpen] = useState(false)
+  const [range, setRange] = useState(() => presetRange('month'))
   const [sum, setSum] = useState(null)
   const [err, setErr] = useState('')
   const [filter, setFilter] = useState('all')
@@ -86,8 +88,8 @@ export default function SalesPage() {
   const loadSummary = useCallback(async () => {
     if (!client?.salesUrl) return
     setSum(null); setErr('')
-    try { setSum(await sheetApi(client, { action: 'summary', month: mk })) } catch (e) { setErr(e.message) }
-  }, [client?.salesUrl, client?.salesKey, mk]) // eslint-disable-line
+    try { setSum(await sheetApi(client, { action: 'summary', since: range.since, until: range.until })) } catch (e) { setErr(e.message) }
+  }, [client?.salesUrl, client?.salesKey, range.since, range.until]) // eslint-disable-line
   useEffect(() => { loadSummary() }, [loadSummary])
 
   const search = async (code = ref) => {
@@ -99,7 +101,7 @@ export default function SalesPage() {
     } catch (e) { alert(e.message) }
     setSearching(false)
   }
-  useEffect(() => { if (query.get('ref') && client?.salesUrl) { setRef(query.get('ref')); search(query.get('ref')) } }, [query.get('ref'), client?.salesUrl]) // eslint-disable-line
+  useEffect(() => { if (query.get('ref') && client?.salesUrl) { setRef(query.get('ref')); search(query.get('ref')); setSellOpen(true) } }, [query.get('ref'), client?.salesUrl]) // eslint-disable-line
 
   const onLeadChange = (l) => { setLead(l); loadSummary() }
 
@@ -123,23 +125,36 @@ export default function SalesPage() {
     <div>
       <div className="page-h">
         <div><h1>Ventas</h1><p className="muted">{staff ? 'Ventas registradas por los clientes y resultados por anuncio, leídos de su planilla de leads.' : 'Registrá tus ventas con el código de referencia del lead.'}</p></div>
+        <div className="row gap-s wrap">
+        {!notConnected && <button className="btn primary big" onClick={() => setSellOpen(true)}>💰 Registrar venta</button>}
         {staff && <select value={cid} onChange={(e) => { setCid(e.target.value); setLead(null); setRef('') }}>{view.clients.map((c) => <option key={c.id} value={c.id}>{c.name}{c.salesUrl ? '' : ' (sin planilla)'}</option>)}</select>}
+        </div>
       </div>
 
       {notConnected ? (
         <Card><Empty icon="🔗" title="La planilla de leads no está conectada" text={staff ? 'Entrá al cliente → Editar cliente → "Planilla de leads" y pegá la URL de la aplicación web.' : 'Pronto vas a poder registrar tus ventas acá.'} /></Card>
       ) : <>
-        <Card title="Registrar una venta" className="mb">
+        {sellOpen && <Modal title="Registrar venta" wide onClose={() => { setSellOpen(false); setLead(null); setRef(''); setNotFound(false) }}>
+          <p className="muted sm mb">Pegá el código de referencia que te llegó con el lead.</p>
           <form className="ref-input" onSubmit={(e) => { e.preventDefault(); search() }}>
             <span>🔎</span>
-            <input placeholder="Pegá el código de referencia (ej.: MF-3VM8G)" value={ref} onChange={(e) => { setRef(e.target.value); setNotFound(false) }} />
+            <input autoFocus placeholder="Pegá el código de referencia (ej.: MF-3VM8G)" value={ref} onChange={(e) => { setRef(e.target.value); setNotFound(false) }} />
             <button className="btn primary" disabled={searching || !ref.trim()}>{searching ? 'Buscando…' : 'Buscar'}</button>
           </form>
           {notFound && <p className="muted sm mt-s">No encontramos un lead con ese código. Revisá que esté bien copiado.</p>}
           {lead && <LeadCard lead={lead} client={client} onChange={onLeadChange} />}
-        </Card>
+        </Modal>}
 
-        <div className="row gap-s mb"><button className="icon-btn" onClick={() => setMk(addMonths(mk, -1))}>‹</button><b>{monthLabel(mk)}</b><button className="icon-btn" onClick={() => setMk(addMonths(mk, 1))}>›</button></div>
+        <div className="range-bar">
+          <select value={range.preset} onChange={(e) => setRange(e.target.value === 'custom' ? { ...range, preset: 'custom' } : presetRange(e.target.value))}>
+            {PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+          {range.preset === 'custom' ? <>
+            <input type="date" value={range.since} max={range.until} onChange={(e) => e.target.value && setRange({ ...range, since: e.target.value })} />
+            <span className="muted sm">a</span>
+            <input type="date" value={range.until} min={range.since} onChange={(e) => e.target.value && setRange({ ...range, until: e.target.value })} />
+          </> : <span className="muted sm">{fmtRange(range)}</span>}
+        </div>
         {err && <div className="callout warn mb">{err}</div>}
         {staff && sum?.metaError && <div className="callout warn mb">{sum.metaError}</div>}
         <div className="stats4 card mb">
@@ -151,6 +166,10 @@ export default function SalesPage() {
           <Stat label="Tasa de cierre" value={t ? fmtPct(t.closeRate ?? (t.leads ? t.sales / t.leads : null)) : '…'} />
           <Stat label="Tiempo a la venta" value={t ? fmtDays(t.avgDays) : '…'} sub="promedio desde el lead" />
         </div>
+
+        <Card className="mb" title="Inversión y facturación">
+          {!sum ? <p className="muted sm">Cargando…</p> : <SalesChart daily={(sum.daily || []).filter((d) => isOn(d.campaign))} since={range.since} until={range.until} hasSpend={sum.hasSpend} />}
+        </Card>
 
         <Card className="mb" title={<div className="tabs inline">
           <button className={tab === 'campaigns' ? 'on' : ''} onClick={() => { setTab('campaigns'); setCamp(null) }}>Por campaña</button>
@@ -191,10 +210,10 @@ export default function SalesPage() {
         </Card>
 
         <div>
-          <Card title="Leads del mes" action={<select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Todos</option><option value="open">Sin vender</option><option value="sold">Vendidos</option></select>}>
+          <Card title="Leads del período" action={<select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="all">Todos</option><option value="open">Sin vender</option><option value="sold">Vendidos</option></select>}>
             <div className="lead-list">
               {list.map((l) => (
-                <div key={l.ref} className="trow" onClick={() => { setRef(l.ref); search(l.ref); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                <div key={l.ref} className="trow" onClick={() => { setRef(l.ref); search(l.ref); setSellOpen(true) }}>
                   <div className="grow trow-main"><span>{l.name || 'Sin nombre'}</span><small className="muted">{l.ref} · {fmtDate(l.date)}{l.ad && ' · ' + l.ad}</small></div>
                   {l.sold ? <Badge color="#16A34A">{fmtMoney(l.amount)}</Badge> : <Badge color="#64748B">Sin vender</Badge>}
                 </div>
@@ -226,4 +245,20 @@ function recalcTotal(sum, isOn) {
   t.cps = t.spend != null && t.sales ? t.spend / t.sales : null
   t.avgDays = dn ? days / dn : null
   return t
+}
+
+const PRESETS = [['month', 'Este mes'], ['lastMonth', 'Mes pasado'], ['7', 'Últimos 7 días'], ['30', 'Últimos 30 días'], ['90', 'Últimos 90 días'], ['year', 'Este año'], ['custom', 'Personalizado']]
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+function presetRange(k) {
+  const t = new Date()
+  let a = new Date(t), b = new Date(t)
+  if (k === 'month') a = new Date(t.getFullYear(), t.getMonth(), 1)
+  else if (k === 'lastMonth') { a = new Date(t.getFullYear(), t.getMonth() - 1, 1); b = new Date(t.getFullYear(), t.getMonth(), 0) }
+  else if (k === 'year') a = new Date(t.getFullYear(), 0, 1)
+  else a.setDate(t.getDate() - Number(k) + 1)
+  return { preset: k, since: ymd(a), until: ymd(b) }
+}
+function fmtRange(r) {
+  const f = (d) => new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short', year: 'numeric' })
+  return `${f(r.since)} – ${f(r.until)}`
 }
