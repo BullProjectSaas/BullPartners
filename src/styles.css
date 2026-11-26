@@ -386,3 +386,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .wf-arrow { text-align: center; color: var(--muted); font-size: 12px; margin: 6px 0 8px; }
 .wf-chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .wf-chain i { font-style: normal; color: var(--muted); margin-right: 6px; }
+
+.tcheck { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--panel); cursor: pointer; flex-shrink: 0; display: grid; place-items: center; font-size: 12px; color: #fff; padding: 0; transition: all .12s; }
+.tcheck:hover { border-color: #16A34A; background: #16A34A22; }
+.tcheck.on { background: #16A34A; border-color: #16A34A; }

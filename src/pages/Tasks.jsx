@@ -57,6 +57,7 @@ export function TaskModal({ taskId, defaults = {}, onClose }) {
       footer={<>
         {existing && <button className="btn danger ghost" onClick={() => { if (confirm('¿Eliminar tarea?')) { actions.deleteTask(existing.id); onClose() } }}>Eliminar</button>}
         <span className="grow" />
+        {existing && existing.status !== 'completada' && <button className="btn success" onClick={() => { actions.saveTask({ ...f, status: 'completada' }); onClose() }}>✓ Completar</button>}
         <button className="btn ghost" onClick={onClose}>Cancelar</button>
         <button className="btn primary" onClick={save}>{existing ? 'Guardar' : 'Crear tarea'}</button>
       </>}>
@@ -101,12 +102,13 @@ export function TaskModal({ taskId, defaults = {}, onClose }) {
 
 /* ---------- Fila y tarjeta ---------- */
 export function TaskRow({ t, showClient = true, onOpen }) {
-  const { view } = useStore()
+  const { view, actions } = useStore()
   const u = view.users.find((x) => x.id === t.assigneeId)
   const c = view.clients.find((x) => x.id === t.clientId)
   return (
     <div className="trow" onClick={() => (onOpen ? onOpen(t.id) : go(`#/task/${t.id}`))}>
-      <span className="dot lg" style={{ background: TASK_STATUS.find((s) => s.id === t.status).color }} />
+      <button className={'tcheck' + (t.status === 'completada' ? ' on' : '')} title={t.status === 'completada' ? 'Marcar como pendiente' : 'Marcar como completada'}
+        onClick={(e) => { e.stopPropagation(); actions.setTaskStatus(t.id, t.status === 'completada' ? 'pendiente' : 'completada') }}>{t.status === 'completada' ? '✓' : ''}</button>
       <div className="grow trow-main">
         <span className={t.status === 'completada' ? 'done' : ''}>{t.title}</span>
         <small className="muted">{showClient && c?.name}{!t.visibleToClient && <> · 🔒 interna</>}</small>
@@ -122,7 +124,7 @@ export function TaskRow({ t, showClient = true, onOpen }) {
 export default function TasksPage({ clientId, embedded }) {
   const { view, user, actions } = useStore()
   const [mode, setMode] = useState(() => localStorage.getItem('mf:taskmode') || 'list')
-  const [who, setWho] = useState('all')
+  const [who, setWho] = useState(clientId ? 'all' : 'me')
   const [cl, setCl] = useState(clientId || 'all')
   const [vis, setVis] = useState('all')
   const [month, setMonth] = useState('all')
