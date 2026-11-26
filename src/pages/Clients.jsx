@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useStore, sendReset, getIntegration, adminApi, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
+import { useStore, sendReset, getIntegration, adminApi, getPendingSecret, savePendingSecret, deletePendingSecret, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
 import { Modal, Field, Card, Progress, Badge, Empty, Avatar, Tabs, Stat, UserSelect, go, fmtDate, fmtDateTime } from '../ui.jsx'
 import TasksPage, { TaskRow } from './Tasks.jsx'
 import ApprovalsPage, { DelivCard } from './Deliverables.jsx'
@@ -17,6 +17,11 @@ function SalesConnection({ f, conn, setConn }) {
         setAccounts(acc.accounts)
         const c = cfg.config
         if (c) setConn((p) => ({ ...p, sheet: `https://docs.google.com/spreadsheets/d/${c.sheetId}/edit`, sheetName: c.sheetName || 'Leads', pixel: c.pixelId || '', account: c.adAccountId || '', currency: c.currency || '', hasCapi: c.hasCapiToken, title: c.sheetTitle }))
+        else {
+          const pc = f.pendingConn || {}
+          const sec = await getPendingSecret(f.salesKey).catch(() => null)
+          setConn((p) => ({ ...p, pixel: pc.pixel || '', account: pc.account || '', currency: pc.currency || '', sheetName: pc.sheetName || 'Leads', hasCapi: !!sec?.capi }))
+        }
       } catch (e) { setErr(e.message) }
       setLoaded(true)
     })
@@ -33,7 +38,7 @@ function SalesConnection({ f, conn, setConn }) {
             {(accounts || []).map((a) => <option key={a.id} value={a.id}>{a.name} · {a.id}{a.active ? '' : ' (inactiva)'}</option>)}
           </select>
         </Field>
-        <Field label="Link de la planilla de leads" hint={conn.title ? `Conectada: ${conn.title}` : 'La planilla tiene que estar en la misma cuenta de Google que el script (o compartida con ella).'}>
+        <Field label="Link de la planilla de leads" hint={conn.title ? `Conectada: ${conn.title}` : 'Podés dejarla vacía y cargarla después: el píxel, la cuenta y el token quedan guardados. La planilla tiene que estar en la cuenta de Google del script (o compartida con ella).'}>
           <input value={conn.sheet} placeholder="https://docs.google.com/spreadsheets/d/…" onChange={set('sheet')} />
         </Field>
         <div className="grid2">
@@ -60,10 +65,19 @@ export function ClientModal({ client, onClose }) {
     if (conn.dirty) {
       setBusy(true)
       try {
-        const integ = await getIntegration()
-        const r = await adminApi(integ, { action: 'register', client: f.salesKey, sheet: conn.sheet, sheetName: conn.sheetName, pixel: conn.pixel, capi: conn.capi, account: conn.account, currency: conn.currency })
-        f.salesUrl = integ.url
-        if (r.warnings?.length) alert(r.warnings.join('\n'))
+        if (!conn.sheet.trim()) {
+          // Sin planilla todavía: se guarda en la app y se conecta cuando se cargue la planilla.
+          if (conn.capi.trim()) await savePendingSecret(f.salesKey, { capi: conn.capi.trim() })
+          f.pendingConn = { pixel: conn.pixel.trim(), account: conn.account, currency: conn.currency, sheetName: conn.sheetName }
+        } else {
+          const integ = await getIntegration()
+          const sec = conn.capi.trim() ? null : await getPendingSecret(f.salesKey).catch(() => null)
+          const r = await adminApi(integ, { action: 'register', client: f.salesKey, sheet: conn.sheet, sheetName: conn.sheetName, pixel: conn.pixel, capi: conn.capi.trim() || sec?.capi || '', account: conn.account, currency: conn.currency })
+          f.salesUrl = integ.url
+          f.pendingConn = null
+          if (sec?.capi) await deletePendingSecret(f.salesKey).catch(() => {})
+          if (r.warnings?.length) alert(r.warnings.join('\n'))
+        }
       } catch (e) { setBusy(false); return alert('No se pudo guardar la conexión: ' + e.message) }
     }
     if (!login && acc.email && acc.password.length < 6) return alert('La contraseña del cliente debe tener al menos 6 caracteres.')

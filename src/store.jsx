@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from 'firebase/auth'
-import { collection, doc, onSnapshot, query, where, writeBatch, setDoc, getDoc } from 'firebase/firestore'
+import { collection, doc, onSnapshot, query, where, writeBatch, setDoc, getDoc, deleteDoc } from 'firebase/firestore'
 import { auth, auth2, fs } from './firebase.js'
 
 /* ============================================================
@@ -17,6 +17,10 @@ export async function getIntegration() {
   return s.exists() ? s.data() : { url: '', adminKey: '' }
 }
 export const saveIntegration = (v) => setDoc(doc(fs, 'meta', 'integration'), v)
+/* Token de CAPI guardado hasta que el cliente tenga planilla (solo admins lo pueden leer). */
+export const getPendingSecret = async (key) => { const s = await getDoc(doc(fs, 'clientSecrets', key)); return s.exists() ? s.data() : null }
+export const savePendingSecret = (key, v) => setDoc(doc(fs, 'clientSecrets', key), v)
+export const deletePendingSecret = (key) => deleteDoc(doc(fs, 'clientSecrets', key))
 export async function adminApi(integ, params) {
   if (!integ?.url || !integ?.adminKey) throw new Error('Primero configurá la conexión en Equipo → "Conexión con Meta y planillas".')
   let res

@@ -64,6 +64,10 @@ service cloud.firestore {
       allow update: if staff() || (mine() && onlyChanges(['sold', 'amount', 'soldAt', 'soldBy', 'capiSent']));
     }
     // Conexión con el script central (URL + clave de administrador): solo admins.
+    // Token de CAPI de clientes que todavía no tienen planilla conectada: solo admins.
+    match /clientSecrets/{key} {
+      allow read, write: if admin();
+    }
     match /meta/integration {
       allow read, write: if admin();
     }
