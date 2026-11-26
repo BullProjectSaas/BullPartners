@@ -89,7 +89,7 @@ export const PROJECT_STATUS = {
 /* ---------------- Permisos ---------------- */
 export function scopeFor(db, user) {
   if (!user) return null
-  if (user.role === 'admin') return { ...db, clientIds: db.clients.map((c) => c.id), notifications: db.notifications.filter((n) => n.userId === user.id) }
+  if (user.role === 'admin') return { ...db, tasks: db.tasks.filter((t) => !t.locked), allTasks: db.tasks, clientIds: db.clients.map((c) => c.id), notifications: db.notifications.filter((n) => n.userId === user.id) }
   if (user.role === 'team') {
     const ids = new Set([
       ...db.projects.filter((p) => p.ownerId === user.id).map((p) => p.clientId),
@@ -106,7 +106,8 @@ function filterBy(db, ids, isClient, user) {
     clientIds: [...ids],
     clients: db.clients.filter((c) => ids.has(c.id)),
     projects: db.projects.filter(inC),
-    tasks: db.tasks.filter((t) => inC(t) && (!isClient || t.visibleToClient)),
+    tasks: db.tasks.filter((t) => inC(t) && !t.locked && (!isClient || t.visibleToClient)),
+    allTasks: db.tasks.filter((t) => inC(t) && (!isClient || t.visibleToClient)),
     deliverables: db.deliverables.filter((d) => inC(d) && (!isClient || d.status !== 'borrador')),
     reports: db.reports.filter((r) => inC(r) && (!isClient || r.published)),
     files: db.files.filter((f) => inC(f) && (!isClient || f.shared)),
@@ -137,7 +138,7 @@ export function monthSummary(db, client, mk) {
 
 /* ---------------- Contexto (Firebase) ---------------- */
 const Ctx = createContext(null)
-export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users']
+export const COLLECTIONS = ['clients', 'projects', 'tasks', 'deliverables', 'reports', 'files', 'comments', 'notifications', 'news', 'users', 'workflows']
 export const OWNERS = ['leonellallanapersonal@gmail.com']
 const empty = () => Object.fromEntries(COLLECTIONS.map((k) => [k, []]))
 const clean = (o) => JSON.parse(JSON.stringify(o)) // quita undefined (Firestore no los acepta)
@@ -218,6 +219,12 @@ export function StoreProvider({ children }) {
     return () => unsubs.forEach((u) => u())
   }, [profile?.id, profile?.role, profile?.clientId]) // eslint-disable-line
 
+  // Avanza los flujos (lo hace cualquier miembro del equipo con la app abierta).
+  useEffect(() => {
+    if (profile && profile.role !== 'client' && flowsReady(db.tasks).length) actionsRef.current?.advanceFlows()
+  }, [db.tasks, profile?.role]) // eslint-disable-line
+  const actionsRef = useRef(null)
+
   const user = profile || null
   const view = useMemo(() => scopeFor(db, user), [db, user])
 
@@ -243,6 +250,7 @@ export function StoreProvider({ children }) {
   }, [])
 
   const actions = useMemo(() => buildActions(mutate, () => user, () => dbRef.current), [mutate, user])
+  actionsRef.current = actions
 
   // Migración: perfiles viejos guardados por ID interno pasan a guardarse por email.
   const migrated = useRef(new Set())
@@ -319,6 +327,20 @@ export async function createAccount({ name, email, password, role, clientId }) {
 }
 export const sendReset = (email) => sendPasswordResetEmail(auth, email)
 
+/* Bloques listos para activarse: el bloque anterior del mismo flujo está completo. */
+export function flowsReady(tasks) {
+  const flows = {}
+  for (const t of tasks) if (t.flowId) (flows[t.flowId] ||= []).push(t)
+  const out = []
+  for (const [flowId, ts] of Object.entries(flows)) {
+    const lockedIdx = ts.filter((t) => t.locked).map((t) => t.blockIndex)
+    if (!lockedIdx.length) continue
+    const next = Math.min(...lockedIdx)
+    if (ts.filter((t) => t.blockIndex < next).every((t) => t.status === 'completada')) out.push({ flowId, blockIndex: next })
+  }
+  return out
+}
+
 /* ---------------- Acciones + notificaciones ---------------- */
 function buildActions(mutate, getUser, getDb) {
   const me = () => getUser()?.id
@@ -332,28 +354,41 @@ function buildActions(mutate, getUser, getDb) {
     const p = db.projects.filter((x) => x.clientId === clientId).map((x) => x.ownerId)
     return [...db.users.filter((u) => u.role === 'admin').map((u) => u.id), ...p]
   }
+  const activate = (db, t) => {
+    t.locked = false
+    if (t.dueDays != null && !isNaN(t.dueDays)) {
+      const d = new Date(); d.setDate(d.getDate() + Number(t.dueDays))
+      t.due = d.toISOString().slice(0, 10); t.month = monthKey(d)
+    }
+    if (t.assigneeId) notify(db, [t.assigneeId], `Nueva tarea (${t.flowName} · ${t.blockName}): "${t.title}"`, `#/task/${t.id}`, null)
+  }
   const clientUsers = (db, clientId) => db.users.filter((u) => u.role === 'client' && u.clientId === clientId).map((u) => u.id)
 
   return {
     /* Clientes */
     /* Devuelve un mensaje de error o null */
-    async saveClient(c, login) {
+    async saveClient(c, login, flows = []) {
       const id = mutate((db) => {
         if (c.id) { Object.assign(db.clients.find((x) => x.id === c.id), c); return c.id }
         const nc = { ...c, id: uid(), createdAt: now(), status: c.status || 'activo' }
         db.clients.push(nc)
         return nc.id
       })
-      if (!login?.email) return null
-      const ex = getDb().users.find((u) => u.role === 'client' && u.clientId === id)
-      try {
-        if (ex) {
-          if (login.name && login.name !== ex.name) mutate((db) => { db.users.find((u) => u.id === ex.id).name = login.name })
-          return null
-        }
-        await createAccount({ name: login.name || c.contact || c.name, email: login.email, password: login.password, role: 'client', clientId: id })
-        return null
-      } catch (e) { return authError(e) }
+      let err = null
+      if (login?.email) {
+        const ex = getDb().users.find((u) => u.role === 'client' && u.clientId === id)
+        try {
+          if (ex) {
+            if (login.name && login.name !== ex.name) mutate((db) => { db.users.find((u) => u.id === ex.id).name = login.name })
+          } else {
+            const key = await createAccount({ name: login.name || c.contact || c.name, email: login.email, password: login.password, role: 'client', clientId: id })
+            // que el usuario del cliente ya exista localmente para asignarle tareas del flujo
+            if (!getDb().users.some((u) => u.id === key)) mutate((db) => { db.users.push({ id: key, name: login.name || c.contact || c.name, email: key, role: 'client', clientId: id }) })
+          }
+        } catch (e) { err = authError(e) }
+      }
+      if (flows.length) this.applyWorkflows(id, flows)
+      return err
     },
     deleteClient(id) {
       mutate((db) => {
@@ -362,6 +397,52 @@ function buildActions(mutate, getUser, getDb) {
         db.users = db.users.filter((u) => u.clientId !== id)
         db.notifications = db.notifications.filter((n) => !gone.includes(n.userId))
         db.clients = db.clients.filter((c) => c.id !== id)
+      })
+    },
+    /* Flujos de trabajo (plantillas de bloques de tareas encadenados) */
+    saveWorkflow(w) {
+      let id = w.id
+      mutate((db) => {
+        if (w.id) Object.assign(db.workflows.find((x) => x.id === w.id), w)
+        else { id = uid(); db.workflows.push({ ...w, id, createdAt: now() }) }
+      })
+      return id
+    },
+    deleteWorkflow(id) { mutate((db) => { db.workflows = db.workflows.filter((w) => w.id !== id) }) },
+    applyWorkflows(clientId, workflowIds) {
+      mutate((db) => {
+        const clientUser = db.users.find((u) => u.role === 'client' && u.clientId === clientId)
+        for (const wid of workflowIds) {
+          const w = db.workflows.find((x) => x.id === wid)
+          if (!w) continue
+          const flowId = uid()
+          ;(w.blocks || []).forEach((b, bi) => {
+            for (const t of b.tasks || []) {
+              if (!t.title?.trim()) continue
+              const isClient = t.assignee === 'client'
+              const task = {
+                id: uid(), clientId, projectId: null, title: t.title.trim(), description: t.description || '',
+                assigneeId: isClient ? clientUser?.id || null : t.assignee || null,
+                priority: t.priority || 'media', status: 'pendiente', visibleToClient: isClient || !!t.visibleToClient,
+                dueDays: t.dueDays === '' || t.dueDays == null ? null : Number(t.dueDays),
+                due: '', month: monthKey(), createdAt: now(),
+                flowId, flowName: w.name, workflowId: w.id, blockIndex: bi, blockName: b.name || `Bloque ${bi + 1}`, locked: bi > 0,
+              }
+              if (bi === 0) activate(db, task)
+              db.tasks.push(task)
+            }
+          })
+        }
+      })
+    },
+    /* Activa el siguiente bloque de cada flujo cuando el anterior está completo. */
+    advanceFlows() {
+      const ready = flowsReady(getDb().tasks)
+      if (!ready.length) return
+      mutate((db) => {
+        for (const { flowId, blockIndex } of flowsReady(db.tasks)) {
+          for (const t of db.tasks.filter((x) => x.flowId === flowId && x.blockIndex === blockIndex && x.locked)) activate(db, t)
+        }
       })
     },
     /* Proyectos */

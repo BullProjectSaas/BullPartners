@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore, sendReset, getIntegration, adminApi, getPendingSecret, savePendingSecret, deletePendingSecret, monthKey, monthLabel, addMonths, monthSummary, projectProgress, PROJECT_STATUS } from '../store.jsx'
 import { Modal, Field, Card, Progress, Badge, Empty, Avatar, Tabs, Stat, UserSelect, go, fmtDate, fmtDateTime } from '../ui.jsx'
 import TasksPage, { TaskRow } from './Tasks.jsx'
+import { ClientFlows, WorkflowPicker } from './Workflows.jsx'
 import ApprovalsPage, { DelivCard } from './Deliverables.jsx'
 import ReportsPage from './Reports.jsx'
 import FilesPage from './Files.jsx'
@@ -59,6 +60,7 @@ export function ClientModal({ client, onClose }) {
   const [f, setF] = useState(() => ({ salesKey: Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10), ...(client || { name: '', contact: '', email: '', status: 'activo' }) }))
   const [acc, setAcc] = useState({ name: login?.name || '', email: login?.email || '', password: '' })
   const [busy, setBusy] = useState(false)
+  const [flows, setFlows] = useState([])
   const [conn, setConn] = useState({ sheet: '', sheetName: 'Leads', pixel: '', capi: '', account: '', currency: '', dirty: false })
   const save = async () => {
     if (!f.name.trim()) return alert('Poné el nombre del cliente.')
@@ -82,7 +84,7 @@ export function ClientModal({ client, onClose }) {
     }
     if (!login && acc.email && acc.password.length < 6) return alert('La contraseña del cliente debe tener al menos 6 caracteres.')
     setBusy(true)
-    const err = await actions.saveClient(f, acc.email ? acc : null)
+    const err = await actions.saveClient(f, acc.email ? acc : null, client ? [] : flows)
     setBusy(false)
     if (err) return alert('El cliente se guardó, pero no se pudo crear su acceso: ' + err)
     onClose()
@@ -96,6 +98,7 @@ export function ClientModal({ client, onClose }) {
         <Field label="Contacto"><input value={f.contact} onChange={(e) => setF({ ...f, contact: e.target.value })} /></Field>
       </div>
       <Field label="Estado del servicio"><select value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}><option value="activo">Activo</option><option value="pausado">Pausado</option><option value="finalizado">Finalizado</option></select></Field>
+      {!client && <WorkflowPicker value={flows} onChange={setFlows} />}
       <SalesConnection f={f} setF={setF} conn={conn} setConn={setConn} />
       <h4>Acceso al portal del cliente</h4>
       <div className="grid2">
@@ -161,6 +164,7 @@ function ClientOverview({ client }) {
   return (
     <div className="stack">
       <MonthPanel client={client} />
+      <ClientFlows clientId={client.id} />
       <div className="grid2">
         <Card title="Proyectos" action={user.role === 'admin' && <button className="btn ghost sm" onClick={() => setProj({})}>+ Proyecto</button>}>
           {projects.map((p) => {

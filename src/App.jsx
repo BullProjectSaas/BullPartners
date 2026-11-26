@@ -9,6 +9,7 @@ import ReportsPage, { ReportModal } from './pages/Reports.jsx'
 import CalendarPage from './pages/Calendar.jsx'
 import FilesPage from './pages/Files.jsx'
 import SalesPage from './pages/Sales.jsx'
+import WorkflowsPage from './pages/Workflows.jsx'
 import TeamPage from './pages/Team.jsx'
 
 function Login() {
@@ -50,7 +51,7 @@ function Login() {
 
 const STAFF_NAV = [
   ['', '🏠', 'Inicio'], ['clients', '👥', 'Clientes'], ['tasks', '✓', 'Tareas'], ['approvals', '🖼', 'Aprobaciones'], ['sales', '💰', 'Ventas'],
-  ['calendar', '📅', 'Calendario'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['team', '⚙︎', 'Equipo'],
+  ['calendar', '📅', 'Calendario'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['workflows', '🧩', 'Flujos'], ['team', '⚙︎', 'Equipo'],
 ]
 const CLIENT_NAV = [['', '🏠', 'Inicio'], ['sales', '💰', 'Ventas'], ['approvals', '✅', 'Aprobar'], ['reports', '📊', 'Reportes'], ['files', '📁', 'Archivos'], ['calendar', '📅', 'Calendario']]
 const MODAL_BG = { task: 'tasks', deliverable: 'approvals', report: 'reports' }
@@ -79,7 +80,7 @@ export default function App() {
     lastBg = parts.join('/')
   }
   page = page || ''
-  const nav = staff ? STAFF_NAV.filter(([k]) => k !== 'team' || user.role === 'admin') : CLIENT_NAV
+  const nav = staff ? STAFF_NAV.filter(([k]) => (k !== 'team' && k !== 'workflows') || user.role === 'admin') : CLIENT_NAV
   const unread = view.notifications.filter((n) => !n.read).length
   const pendingApprovals = view.deliverables.filter((d) => d.status === (staff ? 'cambios' : 'aprobacion')).length
   const unreadReports = !staff ? view.reports.filter((r) => !r.readAt).length : 0
@@ -93,6 +94,7 @@ export default function App() {
   else if (page === 'reports') body = <ReportsPage />
   else if (page === 'files') body = <FilesPage />
   else if (page === 'sales') body = <SalesPage />
+  else if (page === 'workflows' && user.role === 'admin') body = <WorkflowsPage />
   else if (page === 'team' && user.role === 'admin') body = <TeamPage />
   else if (page === 'notifications') body = <NotificationsPage />
   else body = staff ? <AdminHome /> : <ClientHome />

@@ -68,6 +68,11 @@ service cloud.firestore {
     match /clientSecrets/{key} {
       allow read, write: if admin();
     }
+    // Plantillas de flujos de trabajo: el equipo las lee, solo admins las editan.
+    match /workflows/{id} {
+      allow read: if staff();
+      allow write: if admin();
+    }
     match /meta/integration {
       allow read, write: if admin();
     }
