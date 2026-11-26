@@ -364,3 +364,10 @@ form + .news { border-top: 1px solid var(--line2); margin-top: 10px; }
 .tip span { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; padding-left: 12px; }
 .range-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .range-bar input[type=date] { width: auto; }
+
+/* iOS hace zoom al tocar campos con letra menor a 16px y la página queda agrandada: en celular, 16px. */
+@media (max-width: 900px) {
+  input, select, textarea { font-size: 16px; }
+  .title-input { font-size: 18px; }
+}
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
