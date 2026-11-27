@@ -30,27 +30,50 @@ function UserModal({ u, onClose }) {
 
 function IntegrationCard() {
   const [v, setV] = useState({ url: '', adminKey: '' })
+  const [saved, setSaved] = useState(null) // lo guardado en la base
+  const [editing, setEditing] = useState(false)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { getIntegration().then((d) => setV((p) => (p.url || p.adminKey ? p : d))).catch(() => {}) }, [])
-  const test = async () => {
+  const test = async (vals) => {
     setBusy(true); setMsg('')
     try {
-      await saveIntegration(v)
-      const r = await adminApi(v, { action: 'test' })
-      setMsg(`✓ Conectado a Meta como "${r.name}" · ${r.accounts} cuentas publicitarias disponibles`)
-    } catch (e) { setMsg('✗ ' + (/permission/i.test(e.message) ? 'Firebase no deja guardar: falta pegar las reglas nuevas (firestore.rules) en Firebase → Firestore → Reglas.' : e.message)) }
-    setBusy(false)
+      const r = await adminApi(vals, { action: 'test' })
+      setMsg(`✓ Conectado a Meta como "${r.name}" · ${r.accounts} cuentas publicitarias`)
+      return true
+    } catch (e) { setMsg('✗ ' + e.message); return false } finally { setBusy(false) }
   }
+  useEffect(() => {
+    getIntegration().then((d) => {
+      setV(d); setSaved(d)
+      if (d.url && d.adminKey) test(d); else setEditing(true)
+    }).catch(() => setEditing(true))
+  }, []) // eslint-disable-line
+  const save = async () => {
+    try { await saveIntegration(v) } catch (e) { return setMsg('✗ ' + (/permission/i.test(e.message) ? 'Firebase no deja guardar: falta pegar las reglas nuevas en Firebase → Firestore → Reglas.' : e.message)) }
+    setSaved(v)
+    if (await test(v)) setEditing(false)
+  }
+  const ok = msg.startsWith('✓')
   return (
     <div className="card mb">
-      <h3>Conexión con Meta y planillas</h3>
-      <p className="muted sm mb">Script central de Google (integraciones/metaflash-central.gs). Se configura una sola vez.</p>
-      <div className="grid2">
-        <label className="field"><span>URL de la aplicación web</span><input name="mf-script-url" autoComplete="off" value={v.url} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setV({ ...v, url: e.target.value.trim() })} /></label>
-        <label className="field"><span>Clave de administrador (ADMIN_KEY)</span><input name="mf-admin-key" autoComplete="off" spellCheck={false} className="code" value={v.adminKey} onChange={(e) => setV({ ...v, adminKey: e.target.value.trim() })} /></label>
+      <div className="card-h">
+        <h3>Conexión con Meta y planillas</h3>
+        {!editing && <button className="btn ghost sm" onClick={() => setEditing(true)}>Editar</button>}
       </div>
-      <div className="row gap wrap"><button className="btn primary" disabled={busy || !v.url || !v.adminKey} onClick={test}>{busy ? 'Probando…' : 'Guardar y probar conexión'}</button>{msg && <span className={'sm ' + (msg.startsWith('✓') ? 'pos' : 'neg')}>{msg}</span>}</div>
+      {!editing ? (
+        <p className={'sm ' + (busy ? 'muted' : ok ? 'pos' : 'neg')}>{busy ? 'Comprobando conexión…' : msg || '—'}</p>
+      ) : <>
+        <p className="muted sm mb">Script central de Google (integraciones/metaflash-central.gs). Se configura una sola vez.</p>
+        <div className="grid2">
+          <label className="field"><span>URL de la aplicación web</span><input name="mf-script-url" autoComplete="off" value={v.url} placeholder="https://script.google.com/macros/s/…/exec" onChange={(e) => setV({ ...v, url: e.target.value.trim() })} /></label>
+          <label className="field"><span>Clave de administrador (ADMIN_KEY)</span><input name="mf-admin-key" autoComplete="off" spellCheck={false} className="code" value={v.adminKey} onChange={(e) => setV({ ...v, adminKey: e.target.value.trim() })} /></label>
+        </div>
+        <div className="row gap wrap">
+          <button className="btn primary" disabled={busy || !v.url || !v.adminKey} onClick={save}>{busy ? 'Probando…' : 'Guardar y probar'}</button>
+          {saved?.url && <button className="btn ghost" onClick={() => { setV(saved); setEditing(false); test(saved) }}>Cancelar</button>}
+          {msg && <span className={'sm ' + (ok ? 'pos' : 'neg')}>{msg}</span>}
+        </div>
+      </>}
     </div>
   )
 }
