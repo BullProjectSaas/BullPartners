@@ -390,3 +390,29 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 .tcheck { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--panel); cursor: pointer; flex-shrink: 0; display: grid; place-items: center; font-size: 12px; color: #fff; padding: 0; transition: all .12s; }
 .tcheck:hover { border-color: #16A34A; background: #16A34A22; }
 .tcheck.on { background: #16A34A; border-color: #16A34A; }
+
+/* Panorama de clientes */
+.seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; color: var(--muted); }
+.seg button.on { background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+.kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+.kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.kpi span { font-size: 12px; color: var(--muted); }
+.kpi b { display: block; font-size: 21px; font-weight: 650; margin-top: 2px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.ov-wrap { overflow-x: auto; }
+table.ov { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 980px; }
+.ov th { font-size: 12px; color: var(--muted); font-weight: 500; text-align: right; padding: 12px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.ov td { padding: 11px 10px; border-top: 1px solid var(--line2); text-align: right; white-space: nowrap; }
+.ov th:first-child, .ov td:first-child, .ov .l { text-align: left; }
+.ov tbody tr { cursor: pointer; }
+.ov tbody tr:hover td { background: var(--hover); }
+.cli { display: flex; align-items: center; gap: 10px; }
+.logo-c.xs2 { width: 28px; height: 28px; font-size: 13px; border-radius: 7px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid; }
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.on { color: #16A34A; background: #16A34A14; border-color: #16A34A33; }
+.pill.off { color: #64748B; background: #64748B14; border-color: #64748B33; }
+.pill.warn { color: #B45309; background: #D9770614; border-color: #D9770633; }
+.trend { position: relative; display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.trend small { font-weight: 600; font-size: 12px; min-width: 50px; text-align: right; }
+.trend-tip { top: 30px; right: 0; transform: none; min-width: 170px; text-align: left; }
+@media (max-width: 900px) { .kpis { grid-template-columns: 1fr 1fr; } }

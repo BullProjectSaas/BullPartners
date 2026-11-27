@@ -76,6 +76,7 @@ export function ClientModal({ client, onClose }) {
           const sec = conn.capi.trim() ? null : await getPendingSecret(f.salesKey).catch(() => null)
           const r = await adminApi(integ, { action: 'register', client: f.salesKey, sheet: conn.sheet, sheetName: conn.sheetName, pixel: conn.pixel, capi: conn.capi.trim() || sec?.capi || '', account: conn.account, currency: conn.currency })
           f.salesUrl = integ.url
+          f.adAccountId = conn.account || null
           f.pendingConn = null
           if (sec?.capi) await deletePendingSecret(f.salesKey).catch(() => {})
           if (r.warnings?.length) alert(r.warnings.join('\n'))

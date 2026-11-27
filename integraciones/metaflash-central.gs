@@ -43,6 +43,8 @@ function doGet(e) {
     if (p.action === 'summary') return mfOut_(mfResumen_(mfRango_(p)))
     // Puente: datos crudos; los cálculos los hace la app (así el script casi no cambia).
     if (p.action === 'rows') return mfOut_(mfFilas_(mfRango_(p)))
+    // Lectura general de Meta (solo GET y solo dentro de la cuenta publicitaria de este cliente).
+    if (p.action === 'meta') return mfOut_(mfMeta_(p.path))
     if (p.action === 'spend') { var rg = mfRango_(p); var sp = mfInversion_(rg.since, rg.until); return mfOut_({ hasSpend: !!sp.rows, rows: sp.rows || [], daily: sp.daily || [], error: sp.error || null }) }
     if (p.action === 'capi') return mfOut_(mfReenviar_(p.ref))
     return mfOut_({ error: 'Acción desconocida' })
@@ -338,6 +340,21 @@ function mfResumen_(rango) {
     metaError: meta.error || null,
     hasSpend: !!meta.rows,
   }
+}
+
+function mfMeta_(path) {
+  var acc = String(MF.AD_ACCOUNT_ID || '').trim()
+  if (!/^\d+$/.test(acc)) return { error: 'Este cliente no tiene cuenta publicitaria.' }
+  path = String(path || '').replace(/^\/+/, '')
+  if (path.indexOf('act_' + acc) !== 0 || /access_token/i.test(path)) return { error: 'Consulta no permitida.' }
+  var cache = CacheService.getScriptCache(), key = 'MF_META_' + Utilities.base64Encode(path).slice(0, 200)
+  var hit = cache.get(key)
+  if (hit) return JSON.parse(hit)
+  try {
+    var out = mfAdsGet_(path)
+    try { cache.put(key, JSON.stringify(out), 300) } catch (x) {}
+    return out
+  } catch (err) { return { error: String(err && err.message || err) } }
 }
 
 /* Filas de la planilla con lead o venta dentro del rango (sin cálculos). */

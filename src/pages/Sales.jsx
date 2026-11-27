@@ -72,7 +72,7 @@ export default function SalesPage() {
   const { view, user, actions } = useStore()
   const { query } = useRoute()
   const staff = user.role !== 'client'
-  const [cid, setCid] = useState(() => (staff ? (view.clients.find((c) => c.salesUrl) || view.clients[0])?.id : user.clientId))
+  const [cid, setCid] = useState(() => (staff ? query.get('client') || (view.clients.find((c) => c.salesUrl) || view.clients[0])?.id : user.clientId))
   const client = view.clients.find((c) => c.id === cid)
   const [ref, setRef] = useState(query.get('ref') || '')
   const [lead, setLead] = useState(null)
